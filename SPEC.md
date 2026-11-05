@@ -27,6 +27,7 @@ Specs serve three purposes at once:
 - **No type-directed dispatch**; closures are the only form of dynamic dispatch.
 - `==` is **built-in, total, and non-overridable**; functions compare by definition site plus captured values.
 - Failure is a **capability** introduced by `try`, whose raisers are defined by the branches of a following `case`.
+- **No `type` keyword.** Uppercase entry names bind types, with the same `:` (public) and `=` (private) rule as values.
 - The **`$` sigil** marks second-class, non-escaping values.
 - `some(T)` synthesizes only **function-free** values; function-carrying values come from a **recipe catalogue**.
 - **Law specs** mark interfaces in backticks in their titles and bind each with exactly one `every(...)`.
@@ -49,7 +50,7 @@ Specs serve three purposes at once:
 A Duetto file is the body of a struct: a comma-separated sequence of entries. Every brace group is made of the same entries, so a file, a module, and a record literal are one construct. A file is a module, and importing it yields a record (import syntax is not yet fixed).
 
 ```duetto
-type Bool = 'true | 'false,
+Bool: 'true | 'false,
 
 answer: () -> 42,
 
@@ -70,19 +71,22 @@ File     ::= Entries
 Struct   ::= "{" Entries "}"
 Entries  ::= (Entry ("," Entry)* ","?)?
 
-Entry    ::= Name ":" Expr             -- field
-           | Path                      -- punned field: { x }, { p.name }
-           | Name "=" Expr             -- local
-           | "$" Name "=" Expr         -- second-class local
-           | type TypeName TypeParams? "=" TypeExpr
+Entry    ::= name ":" Expr             -- field
+           | Path                      -- punned field: { x }, { p.name }, { Bool }
+           | name "=" Expr             -- local
+           | "$" name "=" Expr         -- second-class local
+           | TypeName TypeParams? ":" TypeExpr   -- public type
+           | TypeName TypeParams? "=" TypeExpr   -- private type
            | spec SpecTitle Struct
            | ensure Expr               -- spec bodies only
            | do Expr                   -- an effect; Expr : {}
            | "<<" Expr                 -- block result; last entry
 ```
 
+Here `name` starts with a lowercase letter and `TypeName` with an uppercase letter (section 3.8).
+
 - **Fields** (`name: expr`) are part of the struct's type and value. At file level, they are the module's exports.
-- **Locals** (`name = expr`) and local type declarations are visible to later entries but are not part of the struct. At file level, they are private.
+- **Locals** (`name = expr`) are visible to later entries but are not part of the struct. At file level, they are private. Types follow the same `:` and `=` rule (section 3.8).
 - **Punning** works for names and paths only: `{ x }` means `{ x: x }`, and `{ p.name }` means `{ name: p.name }`.
 - **Spec entries** contribute no fields.
 
@@ -163,6 +167,23 @@ A spec entry is `spec`, a title, and a struct. The title is part of the grammar,
 
 Comment syntax is not yet fixed; this draft uses `--`.
 
+### 3.8 Type entries
+
+There is no `type` keyword. **An entry whose name starts with an uppercase letter binds a type**, and its right-hand side is parsed as a type expression. A lowercase name binds a value; labels are marked with `'`. As with values, `:` makes a type public and `=` keeps it private:
+
+```duetto
+Bool: 'true | 'false,                                -- public type
+OrderingResult: 'lt | 'eq | 'gt,
+Ordering(A): { compare: (A, A) -> OrderingResult },
+Pair = { first: Int, second: Int },                  -- private type
+```
+
+- Parameters at the head of an entry, as in `Ordering(A): ...`, can only mean a type constructor, since values have no `name(params)` form.
+- Punning works for types: `{ Bool }` re-exports a type from elsewhere.
+- Value names must start with a lowercase letter.
+
+**Type members are transparent and static.** Because a file is a struct and structs are first-class records, public types are members of a record type. For now they are transparent aliases: `m.Bool` is another name for `'true | 'false`, so no dependent typing is needed. Type members exist only at compile time and do not take part in a record's runtime value, its exactness, or `==`. Abstract types, where a type member would become genuinely dependent, are deferred (section 13.2).
+
 ## 4. Types
 
 ### 4.1 Core type forms
@@ -178,9 +199,9 @@ Comment syntax is not yet fixed; this draft uses `--`.
 - named type aliases `Name(...)`
 
 ```duetto
-type Bool = 'true | 'false,
-type OrderingResult = 'lt | 'eq | 'gt,
-type Ordering(A) = { compare: (A, A) -> OrderingResult },
+Bool: 'true | 'false,
+OrderingResult: 'lt | 'eq | 'gt,
+Ordering(A): { compare: (A, A) -> OrderingResult },
 ```
 
 ### 4.2 Labels and label unions
@@ -228,7 +249,7 @@ ys = some([Key]),
 ```
 
 - In a spec, the scope of a type variable is the enclosing spec. In an extracted signature, it is the signature.
-- Type alias parameters, as in `type Ordering(A) = ...`, are already in binding position and need no `?`.
+- Type alias parameters, as in `Ordering(A): ...`, are already in binding position and need no `?`.
 - A bare name that does not resolve to a type is an error. A typo such as `Strng` is reported, instead of silently becoming a fresh type variable.
 
 Since production code has no type annotations, `?` appears only in specs and extracted signatures.
@@ -463,8 +484,8 @@ Payloads passed to raisers are first-class values, so they cannot contain `$` va
 Duetto has no typeclasses or dedicated capability types. Interfaces are ordinary records of functions, passed explicitly:
 
 ```duetto
-type Ordering(A) = { compare: (A, A) -> OrderingResult },
-type Reader = { read_text: (String) -> String },
+Ordering(A): { compare: (A, A) -> OrderingResult },
+Reader: { read_text: (String) -> String },
 
 sort_by: (xs, ord) -> ...,
 ```
