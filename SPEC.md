@@ -258,14 +258,10 @@ Since production code has no type annotations, `?` appears only in specs and ext
 
 Duetto has no tuples. Parentheses mean grouping and parameter lists only, and `(x, y) -> ...` is a parameter list, not a tuple pattern.
 
-Tuples could be added cheaply as sugar for records with numeric fields, as in Standard ML, but their main appeal would be unifying them with argument lists, so that every function takes a single argument. That unification conflicts with second-class values: in `map = (xs, $f) -> ...`, the argument tuple would be a record holding a `$` value, which fields can never hold. Without the unification, the remaining benefit is small. Named records serve better, and punning makes them cheap:
+Tuples could be added cheaply as sugar for records with numeric fields, as in Standard ML, but their main appeal would be unifying them with argument lists, so that every function takes a single argument. That unification conflicts with second-class values: in `map = (xs, $f) -> ...`, the argument tuple would be a record holding a `$` value, which fields can never hold. Without the unification, the remaining benefit is small. Named records serve better, and cost no more to write:
 
 ```duetto
-divmod = (a, b) -> {
-  div = a / b,
-  mod = a % b,
-  <<{ div, mod }
-},
+divmod = (a, b) -> { div: a / b, mod: a % b },
 ```
 
 For generic code, the standard library picks field names once, as in `zip` returning `[{ left: A, right: B }]`.
