@@ -210,7 +210,7 @@ Labels are primitive atomic values and singleton types. Duetto has no primitive 
 
 Unions are restricted to labels. A union such as `Int | String`, or a union of record types, is not allowed. Consuming a label union is done by matching on the label (section 6.3), which is ordinary value inspection, not type inspection. A singleton label type is a subtype of any union containing it.
 
-There are no tagged constructors. Data that would conventionally be a tagged union is expressed with records, lists, labels, or by passing functions.
+There are no tagged constructors. Data that would conventionally be a tagged union is expressed with records, lists, labels, or by passing functions. Section 13.4 plans two extensions instead of tagged unions: **untagged unions of labels and records**, and **handler-interface `case` sugar**.
 
 ### 4.3 Exact records
 
@@ -283,6 +283,8 @@ This decision will be revisited only if an elegant way is found to unify tuples 
 ### 5.1 Function equality
 
 Two function values are equal when they originate from the **same lambda literal** and their **captured variables are equal**, compared recursively with `==`. A function is therefore equal only to itself; an identical function written elsewhere is different.
+
+**References within a recursive group are not captures.** A lambda's identity is its lambda site plus the values it captures from *outside* its recursive group (section 3.5). Without this rule, comparing two closures of a local recursive function would recurse forever, since each refers to itself. With it, equality always terminates: values are immutable and computed bindings are backward-only, so captured data is acyclic, and the only cycles in the language run through recursive groups.
 
 ```duetto
 adder = n -> x -> x + n,
@@ -374,7 +376,9 @@ p = some({ name: String, .. }),
 
 ### 7.3 Abstract types and parametricity
 
-For a type variable `?A`, `some(?A)` generates opaque values that support only `==`. Because Duetto has no type-directed dispatch (section 6.2), production code cannot inspect these values, so a spec that passes for opaque values tests the real polymorphic contract.
+For a type variable `?A`, `some(?A)` generates opaque values that support only `==`. Because Duetto has no type-directed dispatch (section 6.2), production code cannot inspect these values.
+
+The guarantee is **parametricity up to equality**. Every Duetto type supports `==`, so "for all `A`" already means "for all `A`, with equality": a function of type `(?A) -> A` must still be the identity, but one of type `(?A, A) -> A` may branch on whether its arguments are equal. To exercise such branches, the generator for abstract types must **produce collisions**, sometimes generating equal values, rather than tokens that are always distinct.
 
 ### 7.4 What `some` can synthesize
 
@@ -555,6 +559,10 @@ Recipes are concrete, such as `Ordering(Foo)`, while law specs are generic, such
 
 Law specs do not gate admission. A recipe used by a sorting spec may also be checked by a law spec in the same round. A broken implementation can therefore cause a small cascade of failures, which section 10.8 addresses.
 
+**Why lawfulness can be assumed.** A recipe is admitted when its constructing spec passes, which does not by itself establish that it satisfies the laws of its interface. The assumption that `some` values of an interface type are lawful is justified at the level of the **whole run**: law specs are instantiated for every catalogued recipe of their type, so a recipe that breaks a law fails that law spec and the run fails. A green run therefore implies that every recipe used passed every applicable law, as far as testing goes. A failing run may contain spurious failures in specs that consumed a broken recipe; the failure reporter (section 10.8) groups them.
+
+This requires one rule: **instantiation caps (section 10.5) may limit consumer specs, but never law specs.** Every recipe used by any spec must also be run through all applicable laws.
+
 ### 10.7 Doubles and recipes
 
 A double is never itself catalogued as a recipe. A recipe may still contain doubles that its construction needed, such as an ordering built by `load_ordering(fs_double, ...)`.
@@ -674,6 +682,15 @@ spec identity returns its input {
 
 This contributes `identity : (?A) -> A`, universally quantified over `A`. A spec using `some({ name: String, .. })` contributes an open-record parameter.
 
+**Combining uses.** Each use of a field in a spec yields a **usage type**, in which `?` variables are rigid. The extraction rule is:
+
+> The candidate signature is the least general type of which every usage type is an instance (anti-unification). It is accepted only if each of its type variables comes from a `?` variable in at least one spec; otherwise the specs conflict.
+
+- `(?A) -> A` and `(Int) -> Int` give `(?X) -> X`, accepted: `X` comes from `?A`, and the concrete use is an instance.
+- `(Int) -> Int` and `(String) -> String` also give `(?X) -> X`, but `X` comes from no `?` variable, so the specs conflict: "`f` is used at `Int` in spec P and at `String` in spec Q; did you mean `some(?A)`?"
+
+Generalization therefore happens only when a spec asks for it explicitly. The implementation is then checked against the accepted signature.
+
 ### 12.3 Labels (proposed)
 
 The set of labels a function accepts is the union of the labels its specs pass to it. Specs calling `f('true)` and `f('false)` give `f : ('true | 'false) -> ...`. Every accepted label then has at least one spec exercising it. `some(Bool)` covers the generative case.
@@ -698,8 +715,8 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 
 ### 13.1 Open questions
 
-- **Evaluation cost.** Re-running specs for each newly catalogued type can grow quickly. The recursion limit may need a companion cap on instantiations per spec, or sampling.
-- **Generalization from concrete literals.** Specs that use only concrete values produce monomorphic signatures. A warning suggesting `some(...)` may help.
+- **Choice data.** Tagged unions are deliberately not adopted while alternatives are explored. The plan is in section 13.4.
+- **Evaluation cost.** Re-running specs for each newly catalogued type can grow quickly. The recursion limit may need a companion cap on instantiations per consumer spec, or sampling.
 - **Unconstrained results.** If no spec inspects a function's result, its return type is unconstrained.
 - **Overloaded `raise`.** A single overloaded raiser, with payloads told apart by a label field, would require intersection types and effectively reintroduce discriminated unions. Named raisers are the current design.
 - **Termination.** Reading `some` specs as proofs would require totality of the production functions involved, probably through an opt-in marker. Without it, the logical reading is partial correctness.
@@ -708,12 +725,81 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 ### 13.2 Deferred
 
 - List deconstruction and pattern matching (planned)
-- Recursive type aliases (likely needed early, for trees as `{ value: A, children: [Tree(A)] }`)
+- Recursive type aliases (now required by the plan in section 13.4, for trees as `{ value: A, children: [Tree(A)] }`)
 - Formal rules for label subtyping and function variance
 - Mutable state
 - Exact generator semantics for all `some(T)` forms
 - Imports, and abstract types in modules. Abstract types will need a way to state whether `==` may see through them.
 - An exhaustive formal grammar and operational semantics
+
+### 13.3 Formal core (priority)
+
+The distinctive features interact closely, so a small formal core comes before further syntax work. In order, since each step depends on the previous ones:
+
+1. **Typing and generalization**, including the extraction rule (section 12.2).
+2. **Row unification** for open records.
+3. **`$` escape checking.**
+4. **Initialization order** in structs (section 3.5).
+5. **Operational semantics of `try`** and unwinding.
+
+### 13.4 Choice data without tagged unions
+
+Tagged unions are a proven solution, which is exactly why alternatives are explored first. The plan is to introduce **both** of the forms below, paying their costs early, since most of those costs buy features needed anyway.
+
+#### Untagged unions of labels and records
+
+Exact records can be told apart by their field sets, so a union of exact records with different field sets is unambiguous. With width subtyping it would not be.
+
+```duetto
+Expr: { num: Int } | { add: { l: Expr, r: Expr } },
+Option(A): 'none | { some: A },
+Result(A, E): { ok: A } | { err: E },
+
+eval = e -> case e {
+  { num } -> num,
+  { add } -> eval(add.l) + eval(add.r),
+},
+```
+
+- A union may contain labels and exact records, as long as every member has a **distinct label or field set**, and **no member is a type variable**. The last condition preserves parametricity: code never tests whether a value is an `A`, only which known shape it has.
+- Values are plain data: they print well, `some(Expr)` synthesizes them, and `==` works structurally.
+- **Extraction.** Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types. Uses with different shapes are **joined** into a union, generalizing the label rule (section 12.3): every accepted shape has a spec exercising it. Uses with the same shape are anti-unified field by field, under the rule of section 12.2. Unrestricted unions such as `Int | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
+
+#### Handler-interface `case` sugar
+
+A value can carry its own dispatch: a `match` field taking a record of branches.
+
+```duetto
+Expr: { match: ({ num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R },
+
+num = n -> { match: h -> h.num(n) },
+add = (l, r) -> { match: h -> h.add(l, r) },
+
+eval = e -> case e {
+  num(n) -> n,
+  add(l, r) -> eval(l) + eval(r),
+},
+```
+
+A `case` on a value that is not a label or an untagged union desugars to calling its `match` field: `e.match({ num: n -> n, add: (l, r) -> ... })`. It mirrors the handler `case` of `try`, without `$`. Exhaustiveness comes from exact records, and equality from function equality: `num(1) == num(1)` is `'true`. It suits values defined by behavior, such as streams or visitors.
+
+#### Supporting features
+
+Each of these pays off beyond choice data:
+
+- **Recursive type aliases**, required by both forms. They are **equi-recursive**: a type is its unfolding, with equality decided on regular trees. Recursion must be **contractive**, passing through a record, list, or function type; `T: T` and `T: T | 'x` are rejected.
+- **Rank-2 polymorphism**, required by the handler form, since `?R` in `match` must be quantified per call. It is also needed for abstract types in modules: a module exposing an abstract type with its operations is an existential, which rank-2 polymorphism encodes. The types come from declared aliases, so this is checking, not inference.
+- **Printing functions** in failure messages, by lambda site and captures, matching `==`. The closure returned by `num(1)` prints as `num{ n: 1 }`, and a nested value as `add{ l: num{ n: 1 }, r: num{ n: 2 } }`.
+- **Constructor-based generation.** Today's recipes are values built by specs, which give specific trees but not random ones. The runner can treat catalogued functions returning a type, such as `num` and `add` for `Expr`, as constructors, and build random values by applying them to synthesized arguments, bounded by the recursion limit.
+
+#### Order of work
+
+1. Recursive type aliases
+2. Untagged unions of labels and records, with the join rule for extraction
+3. Function printing in failure messages
+4. Constructor-based generation from recipes
+5. Rank-2 polymorphism, together with abstract types in modules
+6. Handler-interface `case` sugar, built on step 5
 
 ## 14. Examples
 
