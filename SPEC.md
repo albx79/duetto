@@ -254,6 +254,24 @@ ys = some([Key]),
 
 Since production code has no type annotations, `?` appears only in specs and extracted signatures.
 
+### 4.8 No tuples
+
+Duetto has no tuples. Parentheses mean grouping and parameter lists only, and `(x, y) -> ...` is a parameter list, not a tuple pattern.
+
+Tuples could be added cheaply as sugar for records with numeric fields, as in Standard ML, but their main appeal would be unifying them with argument lists, so that every function takes a single argument. That unification conflicts with second-class values: in `map = (xs, $f) -> ...`, the argument tuple would be a record holding a `$` value, which fields can never hold. Without the unification, the remaining benefit is small. Named records serve better, and punning makes them cheap:
+
+```duetto
+divmod = (a, b) -> {
+  div = a / b,
+  mod = a % b,
+  <<{ div, mod }
+},
+```
+
+For generic code, the standard library picks field names once, as in `zip` returning `[{ left: A, right: B }]`.
+
+This decision will be revisited only if an elegant way is found to unify tuples with argument lists, even in the presence of `$` values.
+
 ## 5. Equality
 
 `==` is a built-in language construct. Its behavior cannot be overridden or customized by user code, and it is defined for every first-class value. Both operands must have the same type.
