@@ -284,7 +284,21 @@ This decision will be revisited only if an elegant way is found to unify tuples 
 
 Two function values are equal when they originate from the **same lambda literal** and their **captured variables are equal**, compared recursively with `==`. A function is therefore equal only to itself; an identical function written elsewhere is different.
 
-**References within a recursive group are not captures.** A lambda's identity is its lambda site plus the values it captures from *outside* its recursive group (section 3.5). Without this rule, comparing two closures of a local recursive function would recurse forever, since each refers to itself. With it, equality always terminates: values are immutable and computed bindings are backward-only, so captured data is acyclic, and the only cycles in the language run through recursive groups.
+**Identity is defined over the recursive group instance.** References to members of a lambda's own recursive group (section 3.5) are not captures. Instead, a closure's identity is its lambda site plus the external captures of **all members of its recursive group**. Computing captures per lambda would be wrong, because a group member may reach an external value only through a sibling:
+
+```duetto
+make = n -> {
+  even = k -> case k == 0 { 'true -> 'true, 'false -> odd(k - 1) },
+  odd = k -> case k == n { 'true -> 'false, 'false -> even(k - 1) },
+  <<even
+},
+```
+
+`even` captures nothing from outside its group; only `odd` captures `n`. With per-lambda captures, `make(1) == make(2)` would be `'true` although the two functions behave differently. With group-instance identity, both closures carry the group's external capture `n`, so they differ.
+
+**Termination.** Equality always terminates. The group environment excludes group members, so comparing it never re-enters the group. Captured data is acyclic because values are immutable and because the **initialization-order rule** (section 3.5) rejects any path from a computed binding back to itself: no captured value can contain a closure of the group that captures it. This rule is therefore a precondition of equality terminating.
+
+**Determinism.** Identity depends only on lambda sites and values, never on allocation.
 
 ```duetto
 adder = n -> x -> x + n,
@@ -470,7 +484,7 @@ Some values must not outlive the scope that created them. A raiser called after 
 
 ### 9.1 Rules
 
-1. Only `$`-locals and `$`-parameters can hold second-class values. `$`-names are introduced by `try`, by `$`-locals, and by `$`-parameters. Fields can never hold them.
+1. Only `$`-locals, `$`-parameters, and second-class records (section 9.5) can hold second-class values. `$`-names are introduced by `try`, by `$`-locals, and by `$`-parameters. Fields of an ordinary record can never hold them.
 2. Any expression rooted at a `$`-name is second-class. A function value that captures a `$`-name is second-class too.
 3. A second-class value can be called, projected (`$errs.not_found`), bound to another `$`-local, or passed to a `$`-parameter. It cannot be returned, stored in a field or list, bound to a plain name, or compared with `==`.
 4. A first-class value may be passed to a `$`-parameter, because the parameter only promises that the callee will not let the value escape.
@@ -494,6 +508,25 @@ Recipes are values catalogued from specs. Because second-class values cannot be 
 ### 9.4 Payloads
 
 Payloads passed to raisers are first-class values, so they cannot contain `$` values. A capability can never escape its `try` through an error payload.
+
+### 9.5 Second-class records and `$` in function types
+
+**Second-class records.** A record literal with any second-class field is itself second-class. Like any second-class value, it may only be called into, projected, bound to a `$`-local, or passed to a `$`-parameter; it cannot be returned or stored.
+
+```duetto
+result = e.match({
+  num: n -> check(n, $errs.too_big),   -- second-class branch
+  add: (l, r) -> ...,
+}),                                     -- allowed if match takes a $-parameter
+```
+
+**`$` in function types.** A function type may mark a parameter as second-class, so type aliases can express it:
+
+```text
+match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R
+```
+
+Without this, `$` would exist only on parameter names, and no alias could describe a function that accepts second-class arguments. Both handler encodings in section 13.4 depend on it.
 
 ## 10. Interfaces, laws, and recipes
 
@@ -561,7 +594,19 @@ Law specs do not gate admission. A recipe used by a sorting spec may also be che
 
 **Why lawfulness can be assumed.** A recipe is admitted when its constructing spec passes, which does not by itself establish that it satisfies the laws of its interface. The assumption that `some` values of an interface type are lawful is justified at the level of the **whole run**: law specs are instantiated for every catalogued recipe of their type, so a recipe that breaks a law fails that law spec and the run fails. A green run therefore implies that every recipe used passed every applicable law, as far as testing goes. A failing run may contain spurious failures in specs that consumed a broken recipe; the failure reporter (section 10.8) groups them.
 
-This requires one rule: **instantiation caps (section 10.5) may limit consumer specs, but never law specs.** Every recipe used by any spec must also be run through all applicable laws.
+**Law obligations.** Every recipe used by any spec, and every **generated interface value** (section 13.4), must be run through all applicable law specs. Several rules make this complete:
+
+- **Caps never apply to law specs.** Instantiation caps (section 10.5) may limit consumer specs only.
+- **Applicable laws** are those whose marked interface is exactly the value's type. A value of interface type nested inside another value, as in `{ name: String, ord: Ordering(Foo) }`, is neither checked nor assumed lawful.
+- **Multi-interface laws** are instantiated for every combination of recipes of the marked interfaces with matching type arguments. For `` `Ordering` agrees with `Eq` ``, every `Ordering(X)` recipe is paired with every `Eq(X)` recipe.
+
+**Run outcome.** A run has three outcomes:
+
+1. **Pass**: every spec passed, and every law obligation was discharged.
+2. **Fail**: some spec failed.
+3. **Inconclusive**: no spec failed, but some law obligations could not be completed, for example because the recursion limit was reached before a recipe's laws ran, or because a law spec could not be instantiated for lack of a recipe of a type it needs. The report lists the unchecked recipes and the specs that consumed them, as "passed, assuming an unchecked recipe."
+
+Green means pass. How a project treats an inconclusive run, for example in CI, is project policy, not language semantics.
 
 ### 10.7 Doubles and recipes
 
@@ -695,6 +740,8 @@ Generalization therefore happens only when a spec asks for it explicitly. The im
 
 The set of labels a function accepts is the union of the labels its specs pass to it. Specs calling `f('true)` and `f('false)` give `f : ('true | 'false) -> ...`. Every accepted label then has at least one spec exercising it. `some(Bool)` covers the generative case.
 
+This implicit joining is a **deliberate exception** to the principle that generalization must be explicit (section 12.2): labels are cheap, and a misspelled label is visible in the extracted type. Unions of records are never formed implicitly (section 13.4).
+
 ### 12.4 Second-class parameters
 
 A parameter receives a `$` marking when any spec passes it a second-class value. A definition may also declare a parameter `$`, which constrains its own body.
@@ -705,7 +752,7 @@ A parameter receives a `$` marking when any spec passes it a second-class value.
 2. Extract the signatures of fields.
 3. Typecheck field definitions against those signatures; infer the types of locals.
 4. Execute specs in rounds, admitting each passing spec's recipes to the catalogue, until a fixed point or the recursion limit (section 10.5).
-5. Report failures grouped by shared recipes (section 10.8).
+5. Report the run outcome, pass, fail, or inconclusive (section 10.6), with failures grouped by shared recipes and constructors (section 10.8).
 
 An implementation cannot strengthen its required input shape or change its return type beyond what the specs establish. When a check fails, diagnostics should identify which spec contributed each conflicting constraint.
 
@@ -762,18 +809,36 @@ eval = e -> case e {
 ```
 
 - A union may contain labels and exact records, as long as every member has a **distinct label or field set**, and **no member is a type variable**. The last condition preserves parametricity: code never tests whether a value is an `A`, only which known shape it has.
+- **Members are exact.** A member with an open row, such as `{ name: String, .. }`, would overlap every record with `name`, so it is forbidden.
+- **Distinctness is checked after expansion.** Member aliases are flattened first, as in `Option(A) | { y: Int }`, and recursive aliases are unfolded one level. A member that expands to a type variable is excluded.
 - Values are plain data: they print well, `some(Expr)` synthesizes them, and `==` works structurally.
-- **Extraction.** Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types. Uses with different shapes are **joined** into a union, generalizing the label rule (section 12.3): every accepted shape has a spec exercising it. Uses with the same shape are anti-unified field by field, under the rule of section 12.2. Unrestricted unions such as `Int | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
+- **Projection on a union is an error** for now: `u.name` is rejected even if every member has `name`, since allowing it would amount to width subtyping. The value must go through `case`. This may be revisited.
+
+**Patterns.** A record pattern may be exact or open:
+
+- An exact pattern such as `{ a }` matches only the member whose field set is exactly `{ a }`.
+- An open pattern such as `{ a, .. }` matches every member that has the field `a`. The field must have the same type in all the members it matches.
+- Branches are checked in order. A branch that is fully covered by earlier branches is an error, as with wildcard patterns elsewhere: `{ a, b }` may not follow `{ a, .. }`. The branches together must cover every member.
+
+**Extraction.** Union formation, like generalization, must be **explicit**. A parameter gets a record union type only when a spec uses that union alias, for example through `some(Expr)` or a literal typed against `Expr`. Otherwise, uses with different record shapes are a conflict, as exact records require; specs calling `greet({ name: "Ada" })` and `greet({ name: "Ada", age: 3 })` are reported, not joined. Labels are the deliberate exception (section 12.3).
+
+When uses are combined, the order is fixed:
+
+1. Within each shape class, uses are anti-unified field by field, under the rule of section 12.2. An open use absorbs the exact uses that have all of its fields: `{ num: 1 }` and `some({ num: Int, .. })` give `{ num: Int, .. }`.
+2. The classes are then joined into the declared union.
+3. A union that would contain an open member is a conflict.
+
+Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types, which keeps this tractable. Unrestricted unions such as `Int | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
 
 #### Handler-interface `case` sugar
 
 A value can carry its own dispatch: a `match` field taking a record of branches.
 
 ```duetto
-Expr: { match: ({ num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R },
+Expr: { match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R },
 
-num = n -> { match: h -> h.num(n) },
-add = (l, r) -> { match: h -> h.add(l, r) },
+num = n -> { match: $h -> $h.num(n) },
+add = (l, r) -> { match: $h -> $h.add(l, r) },
 
 eval = e -> case e {
   num(n) -> n,
@@ -781,25 +846,69 @@ eval = e -> case e {
 },
 ```
 
-A `case` on a value that is not a label or an untagged union desugars to calling its `match` field: `e.match({ num: n -> n, add: (l, r) -> ... })`. It mirrors the handler `case` of `try`, without `$`. Exhaustiveness comes from exact records, and equality from function equality: `num(1) == num(1)` is `'true`. It suits values defined by behavior, such as streams or visitors.
+This **record encoding** desugars a handler `case` to calling the value's `match` field: `e.match({ num: n -> n, add: (l, r) -> ... })`. Exhaustiveness comes from exact records, and equality from function equality: `num(1) == num(1)` is `'true`. It suits values defined by behavior, such as streams or visitors.
+
+It requires **rank-2 polymorphism**, since `?R` in `match` must be quantified per call. It also requires **second-class records and `$` in function types** (section 9.5): if a branch calls a raiser, the branch closure is second-class, so the branch record is second-class and `match` must take it as a `$`-parameter. Rank-2 polymorphism alone does not address escape.
+
+**Dispatch is syntactic.** The kind of `case` is determined by its branch form, never by the scrutinee's type: `'lt ->` is a label `case`, `{ num } ->` is an untagged-union `case`, and `num(p) ->` is handler dispatch, through `match` or through a `try` (below). The meaning of a `case` never depends on types extracted from specs.
+
+#### The `try` encoding
+
+A value can instead be a **dispatcher** that receives a `$` record of raisers and calls exactly one:
+
+```duetto
+num = n -> $h -> $h.num({ n }),
+add = (l, r) -> $h -> $h.add({ l, r }),
+
+eval = e -> try $h { <<e($h) } case {
+  num(p) -> p.n,
+  add(p) -> eval(p.l) + eval(p.r),
+},
+```
+
+- **No rank-2 polymorphism.** The dispatcher returns `Never`, and the result arrives through the `try`, so there is no `?R` to quantify. A value's type is `($ { num: ({ n: Int }) -> Never, add: ({ l: Expr, r: Expr }) -> Never }) -> Never`.
+- **Branches may use `$` values.** Handler branches are the `try`'s own continuation code, not closures stored in a record, so they can freely use enclosing `$` values.
+- It requires **`$` in function types** (section 9.5).
+- Raisers take a single payload record, so branches are written `add(p)`. Writing `add(l, r)` would need sugar for destructuring the payload.
+- Each match unwinds once, which is a performance question for later, not a semantic one.
 
 #### Supporting features
 
 Each of these pays off beyond choice data:
 
 - **Recursive type aliases**, required by both forms. They are **equi-recursive**: a type is its unfolding, with equality decided on regular trees. Recursion must be **contractive**, passing through a record, list, or function type; `T: T` and `T: T | 'x` are rejected.
-- **Rank-2 polymorphism**, required by the handler form, since `?R` in `match` must be quantified per call. It is also needed for abstract types in modules: a module exposing an abstract type with its operations is an existential, which rank-2 polymorphism encodes. The types come from declared aliases, so this is checking, not inference.
+- **Rank-2 polymorphism**, required by the **record** encoding only, since `?R` in `match` must be quantified per call; the `try` encoding does not need it. It is also needed for abstract types in modules: a module exposing an abstract type with its operations is an existential, which rank-2 polymorphism encodes. The types come from declared aliases, so this is checking, not inference.
 - **Printing functions** in failure messages, by lambda site and captures, matching `==`. The closure returned by `num(1)` prints as `num{ n: 1 }`, and a nested value as `add{ l: num{ n: 1 }, r: num{ n: 2 } }`.
-- **Constructor-based generation.** Today's recipes are values built by specs, which give specific trees but not random ones. The runner can treat catalogued functions returning a type, such as `num` and `add` for `Expr`, as constructors, and build random values by applying them to synthesized arguments, bounded by the recursion limit.
+- **Constructor-based generation**, so that function-carrying data such as Scott-encoded trees can be generated randomly. Its rules follow below.
+
+#### Constructor-based generation
+
+Today's recipes are values built by specs, which give specific trees but not random ones. Constructor-based generation builds random values of a type by applying its constructors to synthesized arguments.
+
+- **Selection.** Constructors are **explicitly designated**, never discovered. Treating every catalogued function returning `Expr` as a constructor would include operations under test, such as `simplify: (Expr) -> Expr`: a bug in `simplify` would skew every generated input and misattribute failures.
+- **Bounds.** Generation uses a **size** parameter that shrinks at each recursive constructor, independent of the recursion limit, which bounds recipe depth. At least one designated constructor must be non-recursive (the grounding check of section 10.5), and selection is biased toward non-recursive constructors as the size runs out.
+- **Prerequisites.** Constructor arguments that are function-carrying need recipes, so generation for a type is available only from the round after those recipes exist. Constructors with `$`-parameters cannot be used.
+- **Constructor failures.** A constructor that raises or rejects its synthesized arguments, such as a range with `lo > hi`, **discards the candidate**. This counts as a generation failure attributed to the constructor, not a spec failure.
+- **Attribution.** A failing generated value is reported as its construction trace, such as `add{ l: num{ n: 1 }, r: num{ n: 2 } }`, and shrunk by trace. Failures that share a constructor are grouped under it, like recipes (section 10.8).
+- **Laws.** Generated values of an interface type go through all applicable law specs, like recipes (section 10.6).
 
 #### Order of work
 
 1. Recursive type aliases
-2. Untagged unions of labels and records, with the join rule for extraction
+2. Untagged unions of labels and records, with explicit union formation in extraction
 3. Function printing in failure messages
-4. Constructor-based generation from recipes
-5. Rank-2 polymorphism, together with abstract types in modules
-6. Handler-interface `case` sugar, built on step 5
+4. Constructor-based generation, with designated constructors
+5. `$` in function types and second-class records
+6. The `try` encoding of handler interfaces, built on step 5
+7. Rank-2 polymorphism, together with abstract types in modules
+8. The record encoding of handler interfaces, built on steps 5 and 7
+
+#### Deliberate tradeoffs
+
+- Each match in the `try` encoding unwinds once; its cost is a performance question.
+- Implicit joining of labels is an intentional exception to explicit generalization (section 12.3).
+- Treatment of inconclusive runs (section 10.6) is project policy.
+- Function identity restricts the compiler: it may not merge lambda sites or drop captures (section 5.1).
 
 ## 14. Examples
 
