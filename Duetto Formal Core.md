@@ -1,6 +1,6 @@
 # Duetto: Formal Core
 
-Nov 6, 2026 · @Alb
+Nov 8, 2026 · @Alb
 
 ## 1. Purpose and scope
 
@@ -71,7 +71,7 @@ e ::= n | s | 'a                -- Int, String, label literals
     | S                         -- struct (block or record)
 ```
 
-Built-in operators such as `+` and `length` are constants with fixed types in the initial environment `Γ₀`, for example `+ : (Int, Int) -> Int` and `length : ∀X. ([X]) -> Int`.
+Built-in operators such as `+`, `++` and `length` are constants with fixed types in the initial environment `Γ₀`, for example `+ : (Int, Int) -> Int`, `++ : (String, String) -> String` and `length : ∀X. ([X]) -> Int`. Each operator has exactly one type: there is no overloading, since resolving an overload would be type-directed dispatch (design draft, section 6.2). String concatenation is therefore `++`, not `+`.
 
 ### 2.3 Structs and specs
 
@@ -112,7 +112,7 @@ Unification and inclusion solving are standard, so the rules below list only wha
 [Label]   ⟹  Γ ⊢ 'a : ℓ ⊣ {'a} ⊆ ℓ                        (ℓ fresh)
 
 [List]    Γ ⊢ ei : τi   (each i)
-          ⟹  Γ ⊢ [e1, ..., en] : [α] ⊣ τi ~ α             (α fresh)
+          ⟹  Γ ⊢ [e1, ..., en] : [α] ⊣ τi ~ α             (α fresh; empty-origin if n = 0)
 
 [Rec]     Γ ⊢ ei : τi   (each i, fields distinct)
           ⟹  Γ ⊢ { f1: e1, ..., fn: en } : { f1: τ1, ..., fn: τn | ∅ }
@@ -191,9 +191,9 @@ The rule `ℓ ~ L` remains for completeness, but after freshening concrete sets 
 
 **Solutions.** At the end of solving, an unbound `ℓ` denotes its lower bound `L⁻(ℓ)`. In a spec, the pair `(L⁻(ℓ), L⁺(ℓ))` is what section 5.3 records as a label position, with `L⁺` absent when it is still `⊤`. These pairs are what extraction joins (section 6.3), which is how cases A6 and R7 are decided.
 
-**No generalization.** Label-set variables are never generalized, in locals or elsewhere. All uses of a local share its label-set variables, which is conservative but avoids bounded quantification. Signatures contain only concrete sets.
+**No generalization.** Label-set variables are never generalized, in locals or elsewhere, which avoids bounded quantification. Signatures contain only concrete sets.
 
-Within one constraint system, uses of the same label-set variable are merged. Since label-set variables are not generalized, all uses of a local share them, which is conservative: a local helper's parameter set is the union of everything passed to it anywhere in the struct.
+**One shared set of label variables per struct.** All uses of a local share its label-set variables, across the whole struct, including uses in different fields. These shared variables form one constraint system for all field checks (section 7.2), so a local helper's parameter set is the union of everything passed to it anywhere in the struct. This is conservative, and it means one field's use of a local can widen a label set that another field sees (case R18). Since bounds only grow and shrink monotonically, the result does not depend on the order in which fields are checked. Section 9.2 discusses relaxing this.
 
 ### 3.3 Row unification
 
@@ -215,7 +215,7 @@ Records unify field by field, with row tails absorbing missing fields. Write `F`
 
 The same-tail rule prevents the known non-termination case, where a tail would be rebound against itself (Leijen, *Extensible records with scoped labels*).
 
-The second rule also applies symmetrically, with the sides swapped. Any other combination is an error.
+The third rule also applies symmetrically, with the sides swapped. Any other combination is an error.
 
 - A rigid row `ρ̂` unifies only with itself. It can never absorb or supply fields, which is what makes `{ name: String, ..?R }` mean "some fixed but unknown other fields."
 - A closed row `∅` unifies only with `∅`, or with a flexible row that becomes `∅`. This is exactness: there is no width subtyping.
@@ -254,7 +254,10 @@ Locals, and the fields of **nested** record literals, are typed in dependency or
 1. Build the dependency graph of the struct's locals and of the fields of its nested record literals: `x` depends on `y` if `y` occurs in `x`'s right-hand side.
 2. Compute its strongly connected components, and type them in topological order.
 3. Within a component, each name `x` gets a fresh `αx`; the right-hand sides are typed with those assumptions, and `Γ ⊢ ex : τx` adds `αx ~ τx`.
-4. After solving the component, **lambda bindings are generalized** over the type and row variables that are not free in `Γ`. Computed bindings stay monomorphic, and label-set variables are never generalized (section 3.2).
+4. After solving the component, **lambda locals are generalized** over the type and row variables that are not free in `Γ`. Computed locals stay monomorphic, and label-set variables are never generalized (section 3.2).
+5. **Fields of nested record literals are never generalized**, even when their right-hand side is a lambda: a record type has no `∀` (section 2.1), so a polymorphic field could not appear in the type of the record that contains it. Within the record, such a field is used at one type (case R19). Polymorphic fields of records, and of imported modules, wait for rank-2 polymorphism (design draft, sections 3.1 and 13.4).
+
+The components also determine function identity: a closure's identity includes the external captures of every component it can reach (design draft, section 5.1).
 
 A component with more than one local can only consist of lambda bindings, since computed bindings never refer to themselves through other bindings; that restriction belongs to the initialization-order check (design draft, section 3.5), which is outside the core. The core assumes it holds.
 
@@ -313,7 +316,7 @@ After typing the body, the spec's constraints are solved. Then:
 
 1. **Rigid variables must stay rigid.** If solving would bind `â` or `ρ̂` to anything other than itself, the spec is ill-typed. For example, `x = some(?A), ensure x == 1` treats `A` as `Int`, and is reported as such.
 2. **Each usage `(f, αk)` yields the usage type** `Uk = solve(αk)`. Rigid variables remain in `Uk`.
-3. **Unconstrained positive positions default to `Never`.** A flexible variable left only in positive positions of `Uk` becomes `Never`, the least type consistent with the spec. For example, `ensure empty() == []` gives `() -> [Never]`. Other flexible variables remain; section 6.4 says when that is allowed.
+3. **Variables from empty list literals default to `Never`.** `[List]` with no elements marks its fresh element variable as **empty-origin**, and the mark is kept when variables are merged. A flexible variable that is empty-origin and occurs only in positive positions of `Uk` becomes `Never`: the spec observed an empty list there, and `Never` is the least type consistent with that. For example, `ensure empty() == []` gives `() -> [Never]`. No other variable is defaulted: a position the spec merely ignores, such as the elements of a result passed only to `length`, stays flexible, and section 6.4 says when that is allowed.
 4. **Label-set variables keep their bounds.** A label position in `Uk` is a pair `(L⁻, L⁺)`: the labels that flow into that position, and the labels the spec handles there (with `L⁺` absent if it is still `⊤`). A label position with neither bound counts as unconstrained.
 
 The outputs of a spec, as far as the core is concerned, are its usage types. Runtime execution of specs is unchanged from the design draft.
@@ -394,7 +397,7 @@ If several usages qualify as `U*`, their candidate signatures are equal up to re
 
 Compatibility is the rule for **choosing** the signature, and for diagnostics. It is not the soundness guarantee: usages in one spec share variables, and checking them one at a time can miss a spec that is ill-typed as a whole. That is caught by re-typing every spec in `Γsig` (section 7.4).
 
-**Unconstrained positions.** Flexible variables are allowed in usages other than `U*`, where they act as wildcards. If the only candidate for `U*` leaves a position unconstrained, extraction fails: "the most general use of `f` (spec P) does not constrain its result; add an `ensure` that does." Unconstrained positive positions inside a result have already defaulted to `Never` (section 5.3). But if a function's **entire result** would default to `Never`, giving a function that never returns, it is reported with the same message instead, since that is not what the spec meant.
+**Unconstrained positions.** Flexible variables are allowed in usages other than `U*`, where they act as wildcards. If the only candidate for `U*` leaves a position unconstrained, extraction fails: "the most general use of `f` (spec P) does not constrain its result; add an `ensure` that does." Only empty-origin variables have been defaulted to `Never` (section 5.3), so a result that a spec passes only to `length`, for example, is still unconstrained and reported (case R16). If a function's **entire result** would default to `Never`, giving a function that never returns, it is reported with the same message instead, since that is not what the spec meant.
 
 Anti-unification (6.1) is used for **diagnostics**: when usages conflict, the positions where their tuples disagree show where the specs differ. The report names those specs, and suggests `some(?A)` where a concrete usage was probably meant to be generic.
 
@@ -404,7 +407,7 @@ Signatures are printed with `?` on the first occurrence of each variable, as in 
 
 - **Every usage is compatible with `σf`** (`U ⊑ σf`), by definition, and **every spec is well-typed against all signatures**, by the re-check in section 7.4. The second property is the soundness guarantee.
 - **Generality is never invented.** The signature's type and row structure is always exactly what one spec wrote, never a combination of what several specs wrote. Only label sets are joined across specs.
-- **Holes are never guessed.** The usage that becomes the signature is fully constrained; the only defaulting is to `Never`, the least type.
+- **Holes are never guessed.** The usage that becomes the signature is fully constrained; the only defaulting is to `Never`, and only where a spec observed an empty list.
 - **Relationships are preserved.** A relationship stated by a generic spec, such as "both parameters have the same type" in `(â, â) -> â`, can be relaxed only by another spec that explicitly states the more general contract, as in `(b̂, ĉ) -> b̂`. A concrete usage like `(Int, String) -> Int` cannot relax it.
 - **Partially generic specs do not combine.** Usages `(â, Int) -> â` and `(Int, b̂) -> Int` are each generic in a different parameter; neither is compatible with the other, so they conflict. To get `(?X, ?Y) -> X`, a spec must be generic in both.
 
@@ -432,14 +435,14 @@ A field `f: e` is checked, not inferred:
           ⟹  f: e  is well-typed
 ```
 
-Each field is checked in **its own constraint system**, after the locals have been inferred. The **escape check** matters because a monomorphic computed local has flexible variables free in `Γsig`: if checking `f` unified one of them with `f`'s rigid `x̂`, that rigid variable would leak into every other use of the local.
+Each field is checked in **its own constraint system** for type and row variables, after the locals have been inferred. Label-set variables of locals are the exception: they are shared by all field checks, as section 3.2 states. The **escape check** matters because a monomorphic computed local has flexible variables free in `Γsig`: if checking `f` unified one of them with `f`'s rigid `x̂`, that rigid variable would leak into every other use of the local.
 
 The generalization variables become rigid, so the implementation must work uniformly for every instance: it cannot use an `X` as an `Int`. Label sets and `Never` in `σf` are freshened with flipped polarity (section 3.2):
 
 - **In parameter positions**, the body sees a source with `L⁻ = S`, so every label in the signature's set must be handled. A `case` with branches `B` on such a parameter requires `S ⊆ B`.
 - **In result positions**, the body sees a sink with `L⁺ = S`, so it may produce only labels in `S`. Producing `'gt` where the signature says `{'lt, 'eq}` is an error: "`f` returns `'gt`, which no spec observes or handles."
 
-The second rule follows from section 6.3, and matches the design draft's intent that every label of a public interface is exercised by some spec.
+The second rule follows from section 6.3, and matches the design draft's intent that every label of a public interface is exercised by some spec. It applies to every predicate implemented with `==`, whose result has the lower bound `{'true, 'false}`: some spec must observe each label (cases A12 and R17).
 
 This is how the design draft's rule that "an implementation cannot strengthen its required input shape or change its return type" is enforced: the implementation's type must match the signature exactly, up to the rigid variables.
 
@@ -468,26 +471,28 @@ In usage types, a label position is written as its bounds: `(L⁻, L⁺)`, with 
 | --- | --- | --- | --- |
 | A1 | `x = answer()`, `ensure x == 42` | `({ \| ∅ }) -> Int` | `answer : () -> Int` |
 | A2 | `x = greet({ name: "Ada" })`, `ensure x == "Hello, Ada"` | `({ name: String \| ∅ }) -> String` | `greet : ({ name: String }) -> String` |
-| A3 | A2, plus `p = some({ name: String, .. })`, `ensure greet(p) == "Hello, " + p.name` | A2's, and `({ name: String \| ρ̂ }) -> String` | `greet : ∀(R lacks name). ({ name: String \| R }) -> String`, printed `({ name: String, .. }) -> String` |
+| A3 | A2, plus `p = some({ name: String, .. })`, `ensure greet(p) == "Hello, " ++ p.name` | A2's, and `({ name: String \| ρ̂ }) -> String` | `greet : ∀(R lacks name). ({ name: String \| R }) -> String`, printed `({ name: String, .. }) -> String` |
 | A4 | `x = some(?A)`, `ensure identity(x) == x` | `(â) -> â` | `identity : (?X) -> X` |
 | A5 | A4, plus `ensure identity(5) == 5` | `(â) -> â`, `(Int) -> Int` | `identity : (?X) -> X` |
 | A6 | `ensure f('true) == 1`, `ensure f('false) == 0` | `(({'true}, ⊤)) -> Int`, `(({'false}, ⊤)) -> Int` | `f : ('true \| 'false) -> Int` |
 | A7 | `x = some(?A)`, `ensure pick(x, x) == x`; and `y = some(?A)`, `z = some(?B)`, `ensure pick(y, z) == y` | `(â, â) -> â`, `(b̂, ĉ) -> b̂` | `pick : (?X, ?Y) -> X` |
-| A8 | `xs = some([Int])`, `ensure length(reverse(xs)) == length(xs)`; and `ensure reverse([1, 2]) == [2, 1]` | `([Int]) -> [Never]`, `([Int]) -> [Int]` | `reverse : ([Int]) -> [Int]` |
+| A8 | `xs = some([Int])`, `ensure length(reverse(xs)) == length(xs)`; and `ensure reverse([1, 2]) == [2, 1]` | `([Int]) -> [α]`, `([Int]) -> [Int]` | `reverse : ([Int]) -> [Int]` |
 | A9 | `ensure empty() == []` | `() -> [Never]` | `empty : () -> [Never]` |
 | A10 | Signatures `g : () -> 'a` and `f : ('a \| 'b) -> Int`; production code `h: () -> f(g())` |  | `f(g())` checks `{'a} ⊆ {'a, 'b}` |
 | A11 | `x = 'a`, `y = case x { 'a -> 1, 'b -> 2 }`, `ensure f(x) == 1`; implementation `x -> case x { 'a -> 1 }` | `(({'a}, {'a, 'b})) -> Int` | `f : ('a) -> Int`; the implementation is accepted |
+| A12 | `ensure same(1, 1) == 'true`, `ensure same(1, 2) == 'false`; implementation `(a, b) -> a == b` | `(Int, Int) -> ({'true}, ⊤)`, `(Int, Int) -> ({'false}, ⊤)` | `same : (Int, Int) -> 'true \| 'false`; the implementation is accepted |
 
 Notes:
 
-- **A2 and A3** check against `person -> "Hello, " + person.name`. In A3 the parameter has a rigid row, and `[Proj]` unifies `{ name: α | ρ }` with `{ name: String | R̂ }` by setting `ρ := R̂`.
+- **A2 and A3** check against `person -> "Hello, " ++ person.name`, using `++ : (String, String) -> String`. In A3 the parameter has a rigid row, and `[Proj]` unifies `{ name: α | ρ }` with `{ name: String | R̂ }` by setting `ρ := R̂`. With `+ : (Int, Int) -> Int`, the only addition operator, both would be rejected, since `+` is not overloaded for strings.
 - **A5** shows a concrete usage compatible with a generic one.
 - **A6** shows the label join: either usage supplies the structure, and the negative position's set is `{'true} ∪ {'false}`.
 - **A7** shows a relationship relaxed by a spec that explicitly states the more general contract. The first usage is compatible with the second, with `X := â` and `Y := â`.
-- **A8** shows defaulting: the length spec's element type becomes `Never`, which is compatible with `Int` at a positive position, so the concrete spec becomes the signature.
-- **A9** shows a polymorphic constant stated honestly: `[Never]` is usable at any list type, by freshening at `[Var]`.
+- **A8** shows a wildcard: the length spec leaves the result's element type flexible, since it observed no empty list there (section 5.3), so the concrete spec becomes the signature. Alone, the length spec would be rejected (case R16).
+- **A9** shows a polymorphic constant stated honestly: the spec observed an empty list, so the element type defaults to `Never`, and `[Never]` is usable at any list type, by freshening at `[Var]`.
 - **A10** shows label subtyping through freshening, which plain unification of concrete sets would reject.
 - **A11** shows that a spec's own `case` does not leak into a parameter's signature: the upper bound `{'a, 'b}` is ignored at a negative position.
+- **A12** shows a predicate: the body's `==` has the lower bound `{'true, 'false}`, and the two specs together observe both labels.
 
 ### 8.2 Rejected
 
@@ -508,6 +513,10 @@ Notes:
 | R13 | Only spec: `x = some(?A)`, `y = f(x)`, with nothing constraining `y` | Extraction | "the most general use of `f` (spec P) does not constrain its result; add an `ensure` that does" |
 | R14 | Spec P: `ensure f(1) == "one"`; spec Q: `ensure g(2) == 4`; spec R: `ensure g(f(1)) == 4` | Re-check | Each usage is compatible, but re-typing R in `Γsig` passes `f`'s `String` to `g`'s `Int` |
 | R15 | `x = some(?A)`, `ensure x == 'a` | Elaboration | A label set cannot unify with the rigid `â` (section 3.2) |
+| R16 | Only spec: `xs = some([Int])`, `ensure length(reverse(xs)) == length(xs)` | Extraction | The result's element type is flexible, not empty-origin, so it is not defaulted: "the most general use of `reverse` does not constrain its result". Under the earlier rule, this produced `([Int]) -> [Never]`, which every real implementation would then fail |
+| R17 | Only spec: `ensure same(1, 1) == 'true`; implementation `(a, b) -> a == b` | Checking | The signature is `(Int, Int) -> 'true`, and `==` can produce `'false`: "`same` returns `'false`, which no spec observes or handles" |
+| R18 | Computed local `v = 'a`; field `f: () -> v` with `f : () -> 'a`; field `g: () -> length([v, 'b])` with `g : () -> Int` | Checking | `v`'s label variable is shared by both field checks (section 3.2). Checking `g` merges it with `'b`, so `f` would return `'b`: "`f` returns `'b`, which no spec observes or handles", caused by `g` |
+| R19 | Local `r = { id: x -> x, both: () -> { a = id(1), b = id("s"), <<a } }` | Checking | `id` is a field of a nested record, so it is not generalized (section 4.2): it cannot be used at both `Int` and `String` |
 
 ## 9. Simplifications and open points
 
@@ -515,13 +524,20 @@ Notes:
 
 - **Specs may not mention locals.** The design draft lets specs test locals without fixing their signatures. That creates a cycle: locals are inferred using field signatures, field signatures come from specs, and specs would use locals. With the re-check of section 7.4, a likely resolution is to let specs mention locals during elaboration as wildcards, and to type those uses only in the re-check, once locals are inferred.
 - **Computed locals are monomorphic.** Only lambda bindings are generalized. Since the language is pure, generalizing computed bindings would also be sound; it is left out for simplicity.
-- **Label-set variables are not generalized** (section 3.2), so a local helper's label sets are shared by all its uses.
-- **Only the file's fields are public.** Nested modules, whose fields would also need signatures, come with the module system.
+- **Label-set variables are not generalized** (section 3.2), so a local helper's label sets are shared by all its uses, across all field checks.
+- **Fields of nested records are monomorphic** (section 4.2), since record types have no `∀`.
+- **Only the file's fields are public.** Nested modules, whose fields would also need signatures, come with the module system. The design draft's section 13.1 discusses how imported modules are typed.
 - **The initialization-order check is assumed**, not specified here (section 4.2).
 
-### 9.2 Decisions to confirm
+### 9.2 Decisions and open points
 
-- **Result labels must be observed.** By sections 6.3 and 7.2, an implementation may return only labels that some spec observes or handles (case R6). This makes specs exercise every returned label, but it also means a spec suite must mention each one.
+- **Result labels must be observed (decided).** By sections 6.3 and 7.2, an implementation may return only labels that some spec observes or handles (cases R6 and R17). This is kept, because it is what makes every label of a public interface exercised by some spec. Its cost falls on every predicate implemented with `==`: a spec suite must observe both `'true` and `'false` (case A12). A spec suite that tests only the positive case of a predicate is incomplete, so the cost is accepted.
+- **Label sets shared between field checks (open).** Section 3.2 shares a local's label-set variables across all field checks, so one field's use of a local can widen a label set that another field sees (case R18). That is sound but not modular, and the resulting errors appear far from their cause. The options:
+  1. **Keep sharing**, the current rule. Simple and sound; diagnostics must name both fields.
+  2. **Copy per field**: each field check uses its own copy of the locals' label-set variables, with their bounds. Field checks become independent, but a local's label sets still mix all uses within one field.
+  3. **Copy per use**: treat each local, once inferred, as a scheme whose label-set variables and bounds are copied at every use, in the style of HM(X) constraint copying. Each use is independent, and since locals' types never appear in signatures, no bounded quantification syntax is needed.
+
+  Recommendation: option 3, after a soundness argument for copying bounds. It removes R18's action at a distance, and it subsumes option 2. Until then, option 1 holds.
 - **A change from the earlier extraction rule.** The design draft's earlier anti-unification rule accepted R11, since each variable of the generalization `(X, Y) -> X` came from some `?` variable. The core rejects it under the "most general usage" rule. This is a deliberate change of meaning, not just added precision, and the design draft has been updated to match.
 
 ### 9.3 Next extensions
