@@ -316,8 +316,9 @@ After typing the body, the spec's constraints are solved. Then:
 
 1. **Rigid variables must stay rigid.** If solving would bind `â` or `ρ̂` to anything other than itself, the spec is ill-typed. For example, `x = some(?A), ensure x == 1` treats `A` as `Int`, and is reported as such.
 2. **Each usage `(f, αk)` yields the usage type** `Uk = solve(αk)`. Rigid variables remain in `Uk`.
-3. **Variables from empty list literals default to `Never`.** `[List]` with no elements marks its fresh element variable as **empty-origin**, and the mark is kept when variables are merged. A flexible variable that is empty-origin and occurs only in positive positions of `Uk` becomes `Never`: the spec observed an empty list there, and `Never` is the least type consistent with that. For example, `ensure empty() == []` gives `() -> [Never]`. No other variable is defaulted: a position the spec merely ignores, such as the elements of a result passed only to `length`, stays flexible, and section 6.4 says when that is allowed.
-4. **Label-set variables keep their bounds.** A label position in `Uk` is a pair `(L⁻, L⁺)`: the labels that flow into that position, and the labels the spec handles there (with `L⁺` absent if it is still `⊤`). A label position with neither bound counts as unconstrained.
+3. **Variables from empty list literals default to `Never`.** `[List]` with no elements marks its fresh element variable as **empty-origin**, and the mark is kept when variables are merged. A flexible variable that is empty-origin and occurs only in positive positions of `Uk` becomes `Never`: the spec observed an empty list there, and `Never` is the least type consistent with that. For example, `ensure empty() == []` gives `() -> [Never]`. No other variable is defaulted: a position the spec merely ignores, such as the elements of a result passed only to `length`, stays flexible, and section 6.4 says when that is allowed. A field whose specs only ever observe an empty result still gets `[Never]`, so an implementation that can return elements fails its check (case R20). That diagnostic must name the cause: "`keep` returns `Int` elements, but its specs only observed an empty list; add a spec that observes a non-empty result."
+4. **Open rows in positive positions are closed.** A flexible row that occurs only in positive positions of `Uk` becomes `∅`: the record consists of the fields the spec observed. This happens whenever a spec projects from a result, as in `c.compare(...)` with `c = mk()`, since `[Proj]` leaves the rest of the row open. Without this step, no spec could fix the exact type of a record result whose fields are functions, because such a result cannot be compared with a record literal. It is the record counterpart of the label rule of section 6.3, decided in section 9.2: a result contains only what specs observe, so an implementation that returns a field no spec observes fails its check (case R22). Flexible rows in negative positions are not closed, and remain unconstrained. Rigid rows, from `..` in `some`, are never closed.
+5. **Label-set variables keep their bounds.** A label position in `Uk` is a pair `(L⁻, L⁺)`: the labels that flow into that position, and the labels the spec handles there (with `L⁺` absent if it is still `⊤`). A label position with neither bound counts as unconstrained.
 
 The outputs of a spec, as far as the core is concerned, are its usage types. Runtime execution of specs is unchanged from the design draft.
 
@@ -407,7 +408,7 @@ Signatures are printed with `?` on the first occurrence of each variable, as in 
 
 - **Every usage is compatible with `σf`** (`U ⊑ σf`), by definition, and **every spec is well-typed against all signatures**, by the re-check in section 7.4. The second property is the soundness guarantee.
 - **Generality is never invented.** The signature's type and row structure is always exactly what one spec wrote, never a combination of what several specs wrote. Only label sets are joined across specs.
-- **Holes are never guessed.** The usage that becomes the signature is fully constrained; the only defaulting is to `Never`, and only where a spec observed an empty list.
+- **Holes are never guessed.** The usage that becomes the signature is fully constrained. The only defaulting is to `Never`, only where a spec observed an empty list, and the closing of open rows in positive positions to the fields a spec observed (section 5.3).
 - **Relationships are preserved.** A relationship stated by a generic spec, such as "both parameters have the same type" in `(â, â) -> â`, can be relaxed only by another spec that explicitly states the more general contract, as in `(b̂, ĉ) -> b̂`. A concrete usage like `(Int, String) -> Int` cannot relax it.
 - **Partially generic specs do not combine.** Usages `(â, Int) -> â` and `(Int, b̂) -> Int` are each generic in a different parameter; neither is compatible with the other, so they conflict. To get `(?X, ?Y) -> X`, a spec must be generic in both.
 
@@ -481,6 +482,7 @@ In usage types, a label position is written as its bounds: `(L⁻, L⁺)`, with 
 | A10 | Signatures `g : () -> 'a` and `f : ('a \| 'b) -> Int`; production code `h: () -> f(g())` |  | `f(g())` checks `{'a} ⊆ {'a, 'b}` |
 | A11 | `x = 'a`, `y = case x { 'a -> 1, 'b -> 2 }`, `ensure f(x) == 1`; implementation `x -> case x { 'a -> 1 }` | `(({'a}, {'a, 'b})) -> Int` | `f : ('a) -> Int`; the implementation is accepted |
 | A12 | `ensure same(1, 1) == 'true`, `ensure same(1, 2) == 'false`; implementation `(a, b) -> a == b` | `(Int, Int) -> ({'true}, ⊤)`, `(Int, Int) -> ({'false}, ⊤)` | `same : (Int, Int) -> 'true \| 'false`; the implementation is accepted |
+| A13 | `c = mk()`, `ensure c.compare(1, 1) == 'eq`, `ensure c.compare(1, 2) == 'lt`; implementation `() -> { compare: (a, b) -> case a == b { 'true -> 'eq, 'false -> 'lt } }` | `() -> { compare: (Int, Int) -> ({'eq, 'lt}, ⊤) \| ∅ }` | `mk : () -> { compare: (Int, Int) -> 'eq \| 'lt }`; the implementation is accepted |
 
 Notes:
 
@@ -493,6 +495,7 @@ Notes:
 - **A10** shows label subtyping through freshening, which plain unification of concrete sets would reject.
 - **A11** shows that a spec's own `case` does not leak into a parameter's signature: the upper bound `{'a, 'b}` is ignored at a negative position.
 - **A12** shows a predicate: the body's `==` has the lower bound `{'true, 'false}`, and the two specs together observe both labels.
+- **A13** shows a field that returns an interface value. Projecting `c.compare` leaves `mk`'s result row open, and since it occurs only in a positive position, it is closed to `{ compare }` (section 5.3). The labels returned by `compare` are in a positive position too, so they follow the same rule as a plain result, and the spec observes both labels the implementation can return (design draft, section 12.3).
 
 ### 8.2 Rejected
 
@@ -517,6 +520,9 @@ Notes:
 | R17 | Only spec: `ensure same(1, 1) == 'true`; implementation `(a, b) -> a == b` | Checking | The signature is `(Int, Int) -> 'true`, and `==` can produce `'false`: "`same` returns `'false`, which no spec observes or handles" |
 | R18 | Computed local `v = 'a`; field `f: () -> v` with `f : () -> 'a`; field `g: () -> length([v, 'b])` with `g : () -> Int` | Checking | `v`'s label variable is shared by both field checks (section 3.2). Checking `g` merges it with `'b`, so `f` would return `'b`: "`f` returns `'b`, which no spec observes or handles", caused by `g` |
 | R19 | Local `r = { id: x -> x, both: () -> { a = id(1), b = id("s"), <<a } }` | Checking | `id` is a field of a nested record, so it is not generalized (section 4.2): it cannot be used at both `Int` and `String` |
+| R20 | Only spec: `xs = some([Int])`, `ensure keep(xs) == []`; implementation `xs -> xs` | Checking | The result's element type is empty-origin, so the signature is `([Int]) -> [Never]`, and `Int` cannot unify with `Never`. The diagnostic says the specs only observed an empty list (section 5.3) |
+| R21 | Only spec: `c = mk()`, `ensure c.compare(1, 2) == 'lt`; implementation as in A13 | Checking | The signature is `() -> { compare: (Int, Int) -> 'lt }`, and the body can return `'eq`: "`mk`'s `compare` returns `'eq`, which no spec observes or handles" |
+| R22 | Specs as in A13; implementation `() -> { compare: (a, b) -> ..., name: "by value" }` | Checking | `mk`'s result row was closed to the observed field `compare` (section 5.3), so the extra field `name` cannot be absorbed: "`mk` returns the field `name`, which no spec observes" |
 
 ## 9. Simplifications and open points
 
@@ -531,7 +537,8 @@ Notes:
 
 ### 9.2 Decisions and open points
 
-- **Result labels must be observed (decided).** By sections 6.3 and 7.2, an implementation may return only labels that some spec observes or handles (cases R6 and R17). This is kept, because it is what makes every label of a public interface exercised by some spec. Its cost falls on every predicate implemented with `==`: a spec suite must observe both `'true` and `'false` (case A12). A spec suite that tests only the positive case of a predicate is incomplete, so the cost is accepted.
+- **Result fields must be observed (decided).** An open row in a positive position is closed to the fields a spec observed (section 5.3, case R22). This follows the label rule below: a public result contains only what specs observe. It is needed because no other spec form can fix the exact type of a record result whose fields are functions.
+- **Result labels must be observed (decided).** By sections 6.3 and 7.2, an implementation may return only labels that some spec observes or handles (cases R6 and R17). This is kept, because it is what makes every label of a public interface exercised by some spec. Its cost falls on every predicate implemented with `==`: a spec suite must observe both `'true` and `'false` (case A12). A spec suite that tests only the positive case of a predicate is incomplete, so the cost is accepted. The same holds for fields that return interface values, such as an ordering: every label its functions return must be observed (cases A13 and R21). No adjustment of the rule is needed for them, only guidance (design draft, sections 10.4 and 12.3). One alternative was considered and not adopted: counting the observations of law specs, which check orderings for every label. Law specs do not call the field, though, so they produce no usage of it.
 - **Label sets shared between field checks (open).** Section 3.2 shares a local's label-set variables across all field checks, so one field's use of a local can widen a label set that another field sees (case R18). That is sound but not modular, and the resulting errors appear far from their cause. The options:
   1. **Keep sharing**, the current rule. Simple and sound; diagnostics must name both fields.
   2. **Copy per field**: each field check uses its own copy of the locals' label-set variables, with their bounds. Field checks become independent, but a local's label sets still mix all uses within one field.
@@ -544,8 +551,23 @@ Notes:
 
 In the order of the design draft's section 13.3:
 
-1. **`$` escape checking**, including `$` in function types and second-class records.
+1. **`$` escape checking**, including `$` in function types, second-class records, and the polymorphic payloads proposed in the design draft's section 12.6.
 2. **Initialization order**, specified as a check over the dependency graph of section 4.2.
 3. **Operational semantics of `try`** and unwinding.
 
 After those, the rules should be validated by a reference checker that reproduces the test cases of section 8.
+
+**Cases the `$` and `try` step must reproduce.** These are stated informally in the design draft and must become rules and test cases of that step:
+
+| # | Situation | Expected |
+| --- | --- | --- |
+| T1 | The design draft's section 11.1 example: one double with a `returns` stub and a `raises` stub, two `try`s whose handlers use `e.path` | Accepted: `read_file : ({ read_text: (String, $ ({ path: String }) -> Never) -> String }, String, $ ({ path: String }) -> Never) -> String` |
+| T2 | As T1, but the success stub and the raising stub are in two separate specs | Rejected at extraction: neither use is fully constrained, since one leaves `read_text`'s result open and the other its raiser's type |
+| T3 | As T1, but the double raises `$nf({ path: "a.cfg", line: 3 })` | Under the current rule, rejected when checking `read_file`: its raiser takes `{ path: String }`, from the handlers, but is passed where `{ path: String, line: Int }` is expected. **Under the proposal, accepted**: the handlers give `∀R. ({ path: String, ..R }) -> Never`, which is instantiated with `R := { line: Int }` |
+| T4 | A `raises` stub whose raiser is not bound by the same stub, or a response that mentions an outer `$`-name | Compile error (design draft, section 11) |
+| T5 | A double for a higher-order function, `fold(xs, $f) returns $f(1)` | Accepted: `$f(1)` is an ordinary call, so `$f`'s result is not `Never` |
+| T6 | `$h -> $h.num(n)` returned from a function, and `map(xs, $f)` collecting `$f(x)` | Accepted: call results are first-class (design draft, section 9.1) |
+| T7 | `$times_two = x -> x * 2` passed to `map` in a spec | Accepted, and establishes `map`'s parameter as a `$`-parameter (design draft, section 12.4) |
+| T8 | A recursive `$`-local `$go = x -> ... $go(...)`, and a plain sibling that mentions it | The `$`-local is accepted; the plain sibling is an error (design draft, section 3.5) |
+| T9 | A handler that ignores its payload, with a double that raises `{ path: "a.cfg" }` | Under the current rule, rejected when checking: the payload is `{}`. **Under the proposal, accepted**: the handler gives `∀R. ({ ..R }) -> Never` (design draft, section 12.6) |
+| T10 | Under the proposal: a production caller whose handler compares its payload with an exact record, `not_found(e) -> case e == { path: "a" } { ... }`, passes its raiser to `read_file` | Rejected: the raiser is monomorphic, and `read_file`'s parameter requires a raiser polymorphic in the rest of the payload |

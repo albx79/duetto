@@ -34,9 +34,10 @@ Specs serve three purposes at once:
 - Double expectations are explicit `ensure`s over **`calls`**, which records only first-class arguments; a spec names them with a projection function when there are several.
 - **Operators are not overloaded**: `++` concatenates strings, `+` adds integers.
 - **Second-class values are paths**, not arbitrary expressions rooted at a `$`-name: the result of a call is always first-class.
-- **Doubles raise by calling a raiser** they receive in the call, bound by a `$`-name in the stub; there is no `raises` form.
-- **Only values produced by production code are catalogued** as recipes; values a spec builds itself are fixtures. Recipes are limited by depth, not by rounds, and laws apply to every value usable as their interface.
-- **Specs appear only at file level**, and capabilities originate at the program's entry point.
+- **Doubles raise through a raiser** they receive in the call, bound by a `$`-name in the stub, with `raises $r(payload)`. A raiser's result is `Never` by construction, and its payload is exact (section 12.6).
+- **A value is catalogued only if its behavior comes from production code**: it is bound in a spec, function-carrying, concrete, and every closure it reaches was written in production code. Values reaching a spec closure or a double are fixtures, so recipes never contain doubles and are never invalidated. Recipes are limited by depth, not by rounds, and laws apply to every value usable as their interface.
+- **Law specs with no subject are vacuous**, and do not prevent a pass.
+- **Specs appear only at file level**, and capabilities originate at the program's entry point, which receives exactly the root capabilities its signature names.
 
 ## 2. Design goals
 
@@ -134,7 +135,7 @@ There is no separate function-definition form. A lambda body extends as far righ
 
 The same rule applies in every struct: files, modules, records, and blocks, for fields and locals alike.
 
-- Bindings whose right-hand side is a **lambda literal** form one recursive group. They can refer to themselves and to each other in any order, and their bodies may mention any binding in the struct. The group is a scoping rule only: typing (formal core, section 4.2) and function identity (section 5.1) follow the actual references between its members.
+- Bindings whose right-hand side is a **lambda literal** form one recursive group. They can refer to themselves and to each other in any order, and their bodies may mention any binding in the struct. The group is a scoping rule only: typing (formal core, section 4.2) and function identity (section 5.1) follow the actual references between its members. A `$`-local bound to a lambda literal, such as `$go = x -> ...`, belongs to the group too, so a helper that uses a raiser can be recursive. A sibling that mentions it counts as capturing a `$`-name, so that sibling must also be a `$`-local (section 9.1). Mentioning a sibling counts as capturing it for this rule, although it does not count as a capture for function identity (section 5.1): identity only concerns first-class closures, while this rule keeps a first-class closure from holding a second-class one.
 - Every other binding is **computed**, and is visible only to later entries.
 - **Initialization order.** For each computed binding `b`, collect the lambdas reachable from `b`'s initializer: those it mentions, then those they mention, transitively. Every computed binding those lambdas mention must come **before** `b`. This guarantees that no computation can read a binding that is not yet initialized.
 
@@ -380,7 +381,17 @@ Code never obtains authority ambiently: there are no global file systems, clocks
 main: caps -> run_server(caps.net, caps.log),
 ```
 
-The exact set of root capabilities, and the entry point's name and signature, are not yet fixed (section 13.1). Specs never receive root capabilities: they are pure, so they use doubles (section 11).
+**The entry point's signature is its authority manifest.** Like any field, `main` needs a spec, and its signature comes from that spec. Records are exact, so a spec that passes a double with only `net` and `log` gives `main` the parameter type `{ net: ..., log: ... }`, which a larger record of every root capability would not match. Rather than making the spec mention every root capability, the runtime adapts to `main`: it builds `main`'s argument with **exactly** the fields that `main`'s signature names, with the types the signature gives them. This applies at every level: a root capability is itself a record of functions, and the runtime builds it with exactly the functions the signature names, so a `net` double that stubs only `listen` gives a `net` with only `listen`. A field the runtime cannot provide, or provides at a different type, is an error when the program is built. So `main`'s extracted signature states exactly which authority the program uses, which fits explicit authority (section 2), and a spec for `main` needs doubles only for the capabilities `main` actually uses.
+
+```duetto
+spec main serves on the network and logs {
+  net = double { listen(8080) returns ... },
+  log = double { write("started") returns {} },
+  ensure main({ net, log }) == ...,
+},
+```
+
+The entry point's name, the set of root capabilities, and their types are not yet fixed (section 13.1). Specs never receive root capabilities: they are pure, so they use doubles (section 11).
 
 ### 6.6 Partial primitives
 
@@ -494,7 +505,7 @@ In the example, `$errs` has the exact record type:
 ```
 
 - Each raiser returns `Never`, so a raise can appear in any expression position.
-- Each error kind has its own exactly typed payload record. The raiser's name acts as the tag, so no tagged values exist as data.
+- Each error kind has its own exactly typed payload record. The raiser's name acts as the tag, so no tagged values exist as data. A payload whose fields are not fixed by anything else consists of the fields its handler uses (section 12.6).
 - **Handler branches define; label branches cover.** In a label `case`, the branches must cover the scrutinee's type. In a handler `case`, the branches *create* the capability's type: there is nothing to check for exhaustiveness, but using `$errs.foo` with no `foo(e)` branch is an error ("no handler for `foo`").
 - A branch such as `not_found(e)` resembles a constructor pattern, but Duetto has no tagged variants: it reads as "the `not_found` raiser was called with `e`." Once patterns exist, the payload may be destructured in place: `parse_error({ path, line }) -> ...`.
 
@@ -601,9 +612,11 @@ A value of type `Ordering(A)` has the shape of an ordering, but that does not im
 
 ### 10.3 Reusable law specs
 
-The standard library may define generic law specs, such as reflexivity, sign symmetry, and transitivity for `Ordering(A)`. Because a program is compiled and tested as a whole, these law specs are applied to every implementation of the interface that the program's specs construct.
+The standard library may define generic law specs, such as reflexivity, sign symmetry, and transitivity for `Ordering(A)`. Because a program is compiled and tested as a whole, these law specs are applied to every implementation of the interface that the program's specs bind and whose behavior comes entirely from production code (section 10.5).
 
-> If a program introduces a new implementation of an interface and has specs constructing it, generic law specs for that interface are automatically applied to it during whole-program testing.
+> If a program introduces a new implementation of an interface and a spec binds a value of it, generic law specs for that interface are automatically applied to it during whole-program testing, provided the value's behavior comes from production code.
+
+The promise is about production implementations, wherever their container was built: an ordering a spec assembles from a production comparison is checked, and one a spec writes as a stub is not.
 
 This is reusable conformance testing, not a static proof. Section 10.9 describes how law specs are declared.
 
@@ -614,38 +627,57 @@ Each spec has up to three outputs: type constraints, runtime tests, and **constr
 ```duetto
 spec config file yields ordering {
   fs = double { read_text("config.txt") returns "by_name" },
+  ada = { name: "Ada" },
+  bob = { name: "Bob" },
   ord = load_ordering(fs, "config.txt"),
-  ensure ord.compare(foo1, foo2) == 'lt,
+  ensure ord.compare(ada, bob) == 'lt,
+  ensure ord.compare(bob, ada) == 'gt,
+  ensure ord.compare(ada, ada) == 'eq,
 }
 ```
 
-This spec can yield a recipe for `Ordering(Foo)`, which law specs can then reuse. Recipes never contain second-class values (section 9.3).
+This spec can yield a recipe for `Ordering({ name: String })`, which law specs can then reuse, provided `load_ordering` reads the file while it builds the ordering. An ordering that keeps reading through `fs` would still reach the double, so it would not be catalogued (section 10.5). Recipes never contain second-class values (section 9.3).
+
+All three `ensure`s are needed. The ordering's results are labels in a result position, so they contain only the labels some spec observes (section 12.3). With `'lt` alone, `compare` would extract as returning only `'lt`, the implementation would fail its check, and as an `Ordering` it would fail reflexivity.
 
 Coverage extends only to construction paths that some spec describes; it grows as specs become more generative.
 
 ### 10.5 The recipe catalogue
 
-**What is catalogued.** A spec's value becomes a recipe when it is function-carrying and was **produced by production code**: the result of calling a production field, or a production field's own value. Values that a spec builds itself, with record literals, lambdas, or `double`, are **fixtures**, and are never catalogued. Recipes exist to test production implementations (section 10.3), so a spec remains free to build a deliberately broken value, such as an inconsistent ordering for testing that `sort_by` survives one, without that value being checked against the `Ordering` laws. A fixture passed to production code that wraps it, as in `wrap(fixture)`, produces a catalogued value, which is then checked like any other.
+**What is catalogued.** Recipes exist to test production implementations (section 10.3). What matters is therefore where a value's **behavior** comes from, not who assembled it. A value is catalogued as a recipe exactly when all of these hold:
 
-A recipe enters the catalogue only after the spec that constructs it **passes**. Recipes are never admitted provisionally. Admission is monotonic: once admitted, a recipe stays in the catalogue. A recipe can later be **invalidated** (section 10.7), which excludes it from further draws without removing it; the set of invalidated recipes is monotonic too.
+1. **It is the value of a spec binding**, `x = e`. Values that are only passed along, as in `sort_by(xs, by_name())`, are not candidates, so a spec decides what it offers to the catalogue by naming it. `$`-locals are never candidates, since second-class values cannot be stored.
+2. **It is function-carrying.**
+3. **Its behavior comes only from production code.** Every closure reachable from the value, through record fields, list elements, and the captures of closures, has its lambda literal in production code. Function identity (section 5.1) already tracks each closure's lambda site and captures, so the runner can check this by walking the value. A closure written in a spec, including any double, makes the value a **fixture**.
+4. **Its type is concrete**: it contains no type variables and no opaque tokens (section 7.3). So binding a polymorphic field, as in `f = identity`, does not produce a recipe, while `add1 = make_adder(1)`, of type `(Int) -> Int`, does.
+5. **The spec passed.**
+
+Consequences:
+
+- `ord = { compare: by_name }`, the shape used in section 14.4, is catalogued and checked against the `Ordering` laws: the record is built in the spec, but its only closure, `by_name`, is production code.
+- `ord = reversed(stub_ordering)`, where `stub_ordering` is written in the spec, is a fixture, since the result reaches the stub. A spec can therefore test a combinator with a deliberately partial or unlawful stub, or test that `sort_by` survives an inconsistent ordering, without that value being checked against the laws.
+- `f = make_lookup(store)`, where `store` is a double, is a fixture, since `f` reaches the double. No recipe ever contains a double, so a recipe reused elsewhere can never call one with an unstubbed input (section 10.7).
+- The function under test is not catalogued merely by being mentioned: a spec that calls `sort_by` does not bind it.
+
+A recipe enters the catalogue only after the spec that constructs it **passes**. Recipes are never admitted provisionally. Admission is monotonic: once admitted, a recipe stays in the catalogue.
 
 Specs run in rounds until a fixed point:
 
-1. Statically, each spec **needs** the recipe types of its function-carrying `some(...)` and **produces** the function-carrying values it constructs.
+1. Statically, each spec **needs** the recipe types of its function-carrying `some(...)` and **produces** the function-carrying values of its bindings. Whether a produced value is catalogued is decided when the spec runs, by the rules above.
 2. Round 0 runs the specs that need no recipes. Each passing spec adds its recipes to the catalogue.
 3. Each later round runs the specs whose needs are now covered, including earlier specs re-run with newly available types. Passing specs add more recipes.
 4. Admission stops when a round admits no new recipe within the **depth limit**.
-5. A final pass then runs every law obligation of every admitted recipe that has not run yet (section 10.6).
+5. A final pass then runs every law obligation of every admitted recipe that has not run yet (section 10.6). Values that specs bind during the final pass are **not admitted**, since admission has stopped, so the final pass creates no new obligations and terminates.
 
 **The depth limit** bounds a recipe's **depth**, not the number of rounds. A recipe built by a spec that drew no recipes has depth 0; one built by a spec that drew recipes has depth one more than the deepest of them. Recursive constructions such as `lexicographic(ord)`, producing an `Ordering([A])` from an `Ordering(A)`, generate an unbounded family: `Ordering([Int])`, `Ordering([[Int]])`, and so on. The limit stops **admission** only. Recipes beyond it are never admitted, so nothing ever uses them and they create no obligations, while laws still run on everything admitted. Reaching the limit is therefore normal, and does not by itself make a run inconclusive. Since admission is monotonic and bounded by depth, the rounds terminate. A cap on instantiations per consumer spec may also be needed to control cost; caps never apply to law specs (section 10.6).
 
 The same spec may therefore run several times, with different concrete types, at different points.
 
-A spec that can never run is reported. If no spec could construct a recipe it needs, even assuming every spec passes, this is a compile-time error. In particular, if the only spec constructing an `Ordering(Foo)` itself needs an `Ordering(Foo)`, there is no base case: "no grounded recipe for `Ordering(Foo)`." A spec that could run in principle but got no instantiation in a particular run is handled by the run outcome (section 10.6).
+A spec that can never run is reported. If no spec could construct a recipe it needs, even assuming every spec passes, this is a compile-time error, except for a law spec whose marked interfaces have no producer at all, which is vacuous (section 10.6). In particular, if the only spec constructing an `Ordering(Foo)` itself needs an `Ordering(Foo)`, there is no base case: "no grounded recipe for `Ordering(Foo)`." A spec that could run in principle but got no instantiation in a particular run is handled by the run outcome (section 10.6).
 
 ### 10.6 Law specs over catalogued types
 
-Recipes are concrete, such as `Ordering(Foo)`, while law specs are generic, such as reflexivity over `Ordering(A)`. Type variables are **anchored** by recipe draws (section 7.3): in `every(Ordering(?A))`, `A` is anchored, so the spec runs once per catalogued `Ordering` recipe, with `A` set to that recipe's type argument, such as `A := Foo`. Its `some(A)` then produces `Foo` values, synthesized if `Foo` is function-free and drawn from recipes otherwise.
+Recipes are concrete, such as `Ordering(Foo)`, since values with type variables or opaque tokens in their types are never catalogued (section 10.5), while law specs are generic, such as reflexivity over `Ordering(A)`. Type variables are **anchored** by recipe draws (section 7.3): in `every(Ordering(?A))`, `A` is anchored, so the spec runs once per catalogued `Ordering` recipe, with `A` set to that recipe's type argument, such as `A := Foo`. Its `some(A)` then produces `Foo` values, synthesized if `Foo` is function-free and drawn from recipes otherwise.
 
 Law specs do not gate admission. A recipe used by a sorting spec may also be checked by a law spec in the same round. A broken implementation can therefore cause a small cascade of failures, which section 10.8 addresses.
 
@@ -660,24 +692,23 @@ Law specs do not gate admission. A recipe used by a sorting spec may also be che
 
 **Run outcome.** A run has three outcomes:
 
-1. **Pass**: every spec ran at least once and passed, and every law obligation was discharged.
-2. **Fail**: some spec failed, or some recipe was invalidated (section 10.7).
+1. **Pass**: every non-vacuous spec ran at least once and passed, and every law obligation was discharged.
+2. **Fail**: some spec failed.
 3. **Inconclusive**: nothing failed, but something did not run: some law obligation could not be completed, for example because a law spec could not be instantiated for lack of a recipe of a type it needs, or some consumer spec got no instantiation at all. The report lists the unchecked recipes and the specs that consumed them, as "passed, assuming an unchecked recipe," and the specs that never ran, as "not run: no admitted recipe of type `T`."
 
-A consumer spec that never ran tested nothing, so it cannot count toward a pass. When it never ran because a recipe it needed came from a spec that failed or was invalidated, the run already fails for that reason.
+A consumer spec that never ran tested nothing, so it cannot count toward a pass. When it never ran because a recipe it needed came from a spec that failed, the run already fails for that reason.
+
+**Vacuous laws.** A law spec is **vacuous** when no admitted recipe can be used as one of its marked interfaces: it has no subject, so there is nothing for it to check. A vacuous law is exempt from the "ran at least once" rule, and from the compile-time error of section 10.5. This lets the standard library define laws for interfaces that a given program never builds.
+
+The exemption does not hide a gap. A law creates obligations only for recipes, and a recipe that some spec uses is a subject, so the law is then not vacuous. If an implementation exists but is never catalogued, nothing draws it either, so no spec relies on its lawfulness; a consumer spec that needs one is reported as not run. The exemption is the same for laws in user code and in the standard library, but a vacuous law in user code is reported as a **warning**, "no admitted recipe is an `Ordering`; this law checked nothing," since a user who writes a law usually expects it to apply. A law spec with a subject that cannot be instantiated for another reason, such as a missing recipe for a non-subject `some(...)`, is not vacuous, and makes the run inconclusive as before.
 
 Green means pass. How a project treats an inconclusive run, for example in CI, is project policy, not language semantics.
 
 ### 10.7 Doubles and recipes
 
-A double is never itself catalogued as a recipe. A recipe may still contain doubles that its construction needed, such as an ordering built by `load_ordering(fs_double, ...)`.
+**No recipe contains a double.** A double is written in a spec, so a value that can still reach one is a fixture and is never catalogued (section 10.5). A recipe may still have been **built** with a double: `load_ordering(fs_double, ...)` can read its configuration through the double while it constructs the ordering, and the result is catalogued if the ordering itself no longer refers to `fs`.
 
-When a recipe is reused in another spec, its doubles keep answering their **stubbed** calls, so the value still works, but their call logs are not checked: expectations belong to the spec that primed them (section 11.2). If a reused recipe calls a contained double with an input that was never stubbed, there is no answer to give; that call **invalidates** the recipe instead of failing the spec that borrowed it. Blame stays with the recipe's source. Invalidation has these effects:
-
-- The recipe stays in the catalogue, marked invalid, and is never drawn again (section 10.5).
-- Every recipe **derived** from it, built by a spec that drew it, is invalidated too.
-- The run of the borrowing spec is **discarded**, neither passing nor failing, and its other instantiations still count. Results of other specs that already used the recipe are discarded the same way.
-- The run outcome is **fail**, attributed to the spec that constructed the recipe: "the `Ordering(Foo)` from `config file yields ordering` calls its double with `read_text("other.txt")`, which that spec never stubbed."
+This rules out a problem that would otherwise arise. Suppose `f = make_lookup(store)`, where `store = double { get("a") returns 1 }`, and `f` calls `store` whenever it is invoked. If `f` were catalogued as a `(String) -> Int`, another spec's `some((String) -> Int)` would call it with a generated string, and the double would have no answer. That spec, and the spec that built `f`, are both correct, so neither should fail, and whether the problem appeared would depend on generated inputs. Not cataloguing values that can reach a double avoids this, with no need for recipes to be invalidated after admission. What is lost is law checking of such values. Their behavior depends on a test script, though, so laws would be testing the script rather than an implementation.
 
 ### 10.8 Failure reporting
 
@@ -718,9 +749,10 @@ Doubles are a core language feature, not a library, because specs must be writab
 
 - A spec can construct a test value standing in for a dependency.
 - The double has an ordinary structural type, typically an exact record of functions.
-- The spec **stubs** responses for specific inputs. Entries are comma-separated, of the form `fn(args) returns expr`.
-- In a stub's arguments, a first-class argument is a value, matched against the actual argument with `==`. A second-class argument is written as a `$`-name, such as `$nf`: it matches any value without comparing it, since `==` rejects second-class values, and binds it for the response.
-- The response is evaluated **at call time**, in the caller's context, and may use the `$`-names its stub bound. Calling a bound raiser unwinds to the caller's `try`. This is how a double exercises a failure path (section 11.1).
+- The spec **stubs** responses for specific inputs. Entries are comma-separated, of two forms: `fn(args) returns expr`, and `fn(args) raises $r(payload)`.
+- In a stub's arguments, a first-class argument is a value, matched against the actual argument with `==`. A second-class argument is written as a `$`-name, such as `$nf`: it matches any value without comparing it, since `==` rejects second-class values, and binds it for the response. A parameter written as a `$`-name in any stub is a `$`-parameter of the double's function.
+- The response is evaluated **at call time**, in the caller's context, and may use the `$`-names its stub bound, but no other `$`-name: a response that mentions an outer `$`-name is a compile error, so a double never holds a capability and stays first-class.
+- `raises $r(payload)` calls the raiser `$r`, which must be a `$`-name bound by the same stub, and so unwinds to the caller's `try`. This is how a double exercises a failure path (section 11.1). The form is separate from `returns` because it fixes `$r`'s type as a raiser, `(P) -> Never` with `P` the payload's exact type (section 12.6). A `returns` response may also call a bound `$`-name, for example a callback passed to a higher-order function, but that call is typed as an ordinary call.
 - A call with an input that was not stubbed fails the spec.
 - Expected interactions are checked explicitly, with `calls` (section 11.2).
 
@@ -736,25 +768,35 @@ Statically, this double contributes `{ read_text: (String) -> String }`.
 
 ### 11.1 Testing failure paths
 
-A dependency can only fail if it is given a raiser (section 8), so a capability that may fail takes one per call, like any other function: `read_text: (String, $ ({ path: String }) -> Never) -> String`. A double for it binds the raiser in its stub and calls it in the response:
+A dependency can only fail if it is given a raiser (section 8), so a capability that may fail takes one per call, like any other function: `read_text: (String, $ ({ path: String }) -> Never) -> String`. A double for it binds the raiser in its stubs, and raises through it in the failing case:
 
 ```duetto
 read_file: (fs, path, $nf) -> fs.read_text(path, $nf),
 
-spec missing file is reported {
-  fs = double { read_text("a.cfg", $nf) returns $nf({ path: "a.cfg" }) },
-  result = try $errs {
+spec read_file returns content or reports a missing file {
+  fs = double {
+    read_text("ok.cfg", $nf) returns "content",
+    read_text("a.cfg", $nf) raises $nf({ path: "a.cfg" }),
+  },
+  ok = try $errs {
+    <<read_file(fs, "ok.cfg", $errs.not_found)
+  } case not_found(e) -> "missing: " ++ e.path,
+  missing = try $errs {
     <<read_file(fs, "a.cfg", $errs.not_found)
   } case not_found(e) -> "missing: " ++ e.path,
-  ensure result == "missing: a.cfg",
+  ensure ok == "content",
+  ensure missing == "missing: a.cfg",
 },
 ```
 
-- The spec supplies the real raiser, through its own `try`. `try` is pure, so it may be used in specs.
-- The double **holds no raiser**. It receives one for the duration of each call, so it stays first-class, and can appear in recipes (section 10.7) without carrying a dead capability.
-- The spec contributes the raiser's payload type to `read_file`'s signature, and establishes that its third parameter is a `$`-parameter (section 12.4). It does not fix what `read_text` returns, since its only stub raises. A success-path spec, with a stub such as `read_text("ok.cfg", $nf) returns "content"`, completes the signature: `read_file : ({ read_text: (String, $ ({ path: String }) -> Never) -> String }, String, $ ({ path: String }) -> Never) -> String`.
+Extracted: `read_file : ({ read_text: (String, $ ({ path: String }) -> Never) -> String }, String, $ ({ path: String }) -> Never) -> String`.
 
-There is no separate `raises` form: raising is just a response that calls a raiser.
+- The spec supplies the real raiser, through its own `try`. `try` is pure, so it may be used in specs.
+- The double **holds no raiser**. It receives one for the duration of each call, so it stays first-class.
+- **One spec must cover both paths.** A signature comes from one fully constrained use, never from a combination of several specs (formal core, section 6.4). A spec with only the raising stub would not fix what `read_text` returns, and one with only the success stub would not fix the raiser's type. One double with both stubs fixes the whole type of `read_text`, since the stubs of one function share its parameter and result types (section 12.6).
+- The raiser's `-> Never` comes from two places: the double's `raises` stub fixes it for `read_text`'s parameter, and the `try` fixes it for `read_file`'s third parameter, since every raiser a `try` introduces returns `Never` (section 8.2).
+- The payload `{ path: String }` is exact on both sides. The stub's payload is a record literal, and the handlers' payload consists of the fields they use (section 12.6). The two must agree, or checking `read_file`'s body, which passes the one raiser where the other is expected, fails.
+- The spec establishes that `read_file`'s third parameter is a `$`-parameter (section 12.4).
 
 ### 11.2 Checking interactions with `calls`
 
@@ -777,7 +819,7 @@ spec settings are read once {
 Function parameters have no names, so no field names are invented for them, and no tuple is needed (section 4.8).
 
 - A call count is `length(calls(...))`; arguments and order can be checked too.
-- `calls` accepts only a double **primed by name in the current spec**. Doubles inside recipe values are never reachable by name from a consuming spec, so their expectations are never checked. This rule needs no special case: it follows from scoping.
+- `calls` accepts only a double **primed by name in the current spec**. Recipes never contain doubles (section 10.7), so no spec can observe the calls made to another spec's double.
 - There is no implicit "missing interactions fail" rule; required interactions are stated with `ensure`.
 - Any `ensure` that mentions `calls` is a trace check. All other `ensure`s are statements about values, which keeps the non-logical parts of a spec syntactically visible.
 
@@ -821,13 +863,17 @@ This contributes `identity : (?A) -> A`, universally quantified over `A`. A spec
 - `(?A, A) -> A` and `(Int, String) -> Int` conflict: the concrete use contradicts the relationship stated by the generic spec. Only a spec that states the more general contract, such as `(?A, ?B) -> A`, can relax it.
 - `(?A, Int) -> A` and `(Int, ?B) -> Int` conflict: each is generic in a different parameter, and no spec states the combined claim.
 
-The signature is therefore always exactly what one spec wrote, apart from label sets, and generalization happens only when a spec asks for it explicitly. After extraction, every spec is re-typed against the signatures, and the implementation is checked against them. The formal rules, including defaulting of unconstrained result positions to `Never`, are in the separate formal core document.
+The signature is therefore always exactly what one spec wrote, apart from label sets, and generalization happens only when a spec asks for it explicitly. After extraction, every spec is re-typed against the signatures, and the implementation is checked against them. The formal rules, including when an element type seen only as an empty list defaults to `Never`, are in the separate formal core document.
 
 ### 12.3 Labels
 
 The set of labels a function accepts is the union of the labels its specs pass to it. Specs calling `f('true)` and `f('false)` give `f : ('true | 'false) -> ...`. Every accepted label then has at least one spec exercising it. `some(Bool)` covers the generative case.
 
 The same holds for results: a function may return only labels that some spec **observes**, by comparing the result with it, or **handles**, in a `case` on the result. This is deliberate: every label of a public interface is exercised by some spec. It applies to every predicate, since `==` can produce both `'true` and `'false`: a predicate needs at least one spec observing each (section 14.6).
+
+Record results follow the same principle: when a spec only projects fields from a result, the result's type consists of exactly the fields it observed (formal core, section 5.3), and an implementation that returns more fails its check.
+
+It applies in the same way to **fields that return interface values**, such as a function returning an `Ordering`: the labels returned by the interface's functions are result labels too. A spec for such a field must observe or handle every label the interface returns, for example all three results of `compare` (section 10.4). Otherwise the extracted type has a smaller label set than the interface, and the value is checked against the interface's laws anyway, since it can be used as one (section 10.6). One spec with a `case` that handles every label is the most compact way to do this.
 
 This implicit joining is a **deliberate exception** to the principle that generalization must be explicit (section 12.2): labels are cheap, and a misspelled label is visible in the extracted type. Unions of records are never formed implicitly (section 13.4).
 
@@ -839,8 +885,8 @@ A parameter is a `$`-parameter in the signature exactly when some spec passes it
 
   ```duetto
   spec map can take a second-class function {
-    $double = x -> x * 2,
-    ensure map([1, 2], $double) == [2, 4],
+    $times_two = x -> x * 2,
+    ensure map([1, 2], $times_two) == [2, 4],
   },
   ```
 
@@ -861,6 +907,28 @@ Steps 1–4 are specified precisely in the formal core document, section 7.4.
 An implementation cannot strengthen its required input shape or change its return type beyond what the specs establish. When a check fails, diagnostics should identify which spec contributed each conflicting constraint.
 
 Extracted signatures are printed in the same type syntax, including `?` for type variables, so they can serve as a human-readable interface description.
+
+### 12.6 Raisers and doubles in extraction
+
+Raisers and doubles take part in extraction like any other values, with these rules. They are outside the formal core's current fragment, and the `$` and `try` step must formalize them (formal core, section 9.3).
+
+1. **A raiser's result is `Never` by construction.** Every raiser a `try` introduces has type `(P) -> Never` (section 8.2). This is not the defaulting of the formal core's section 5.3, which applies only to empty lists: it is the raiser's declared type.
+2. **A raiser's payload is exact, and consists of the fields its handler uses.** `P` is the handler parameter's type, always a record, since a raiser takes a single payload record. If its row is still open after solving, as when a handler only projects `e.path`, it is closed to the fields used: `{ path: String }`. This is the general rule that open rows in positive positions are closed to the observed fields (formal core, section 5.3): a payload is passed to a raiser that is itself a parameter, so it is in a positive position. It matches section 8.2, where every payload is exactly typed, and it is the record counterpart of the label rule of section 12.3. In production code the payload is usually fixed by the signatures of the functions the raiser is passed to, so the row is rarely open. A handler that ignores its payload gives the payload `{}`.
+3. **A double's type is the type its stubs give it.** The stubs of one function share its parameter and result types. A `returns e` stub unifies the result with `e`'s type. A `raises $r(p)` stub types `$r` as `(τp) -> Never`, where `τp` is the exact type of the payload `p`, and places no constraint on the result. A parameter written as a `$`-name is a `$`-parameter.
+4. **Raisers and doubles follow the one-use rule.** A field's signature comes from one fully constrained use (section 12.2), so a spec that exercises a fallible capability should cover both its success and its failure in one double, as in section 11.1.
+
+Rule 2 makes a spec too narrow: a handler that uses only `path` gives the payload `{ path: String }`, so an implementation that raises `{ path, line }` fails its check, and a handler that ignores its payload gives `{}`, which no implementation that raises a real payload can satisfy. The payload type then comes from the wrong side: from what the spec's handler happens to read, not from what the implementation raises.
+
+**Proposal: polymorphic payloads.** A handler that reads only `path` accepts any payload with a `path`, so its raiser's honest type is `∀R. ({ path: String, ..R }) -> Never`. The proposal replaces rule 2 with these rules; it is scheduled with the `$` and `try` formal step (section 13.3), not with general rank-2 polymorphism (section 13.4).
+
+- **A handler is generalized like a lambda local.** After typing a handler branch, the free type and row variables of its payload that are not free in the environment are quantified, and the raiser it defines gets the quantified type. A handler that reads only `e.path` gives `∀R. ({ path: String, ..R }) -> Never`; one that ignores its payload gives `∀R. ({ ..R }) -> Never`.
+- **Only raisers may be polymorphic in this way.** A `$`-parameter's type may be a quantified raiser type, `∀… . (P) -> Never`, with the quantifier directly on the raiser. This is a narrow case of rank-2 polymorphism: raisers are second-class, so a polymorphic raiser is never stored, returned, or placed inside data. It only flows down into callees.
+- **Calling a polymorphic raiser instantiates it.** `$nf({ path: p, line: 3 })` instantiates `R := { line: Int }`. Passing it where a monomorphic raiser is expected, such as a double's `({ path: String, line: Int }) -> Never`, instantiates it the same way.
+- **Passing a raiser to a polymorphic `$`-parameter requires it to be at least as polymorphic.** A caller whose handler compares the payload with an exact record cannot pass its raiser to `read_file`, which may raise any extension of `{ path }`. This is correct, not a limitation: the handler would mishandle the extra fields.
+- **Extraction counts a quantified raiser type as fully constrained.** In section 11.1, `read_file` would get `$ ({ path: String, ..?R }) -> Never` for its third parameter, where `?R` is quantified over that parameter only.
+- **It is sound with `==`.** A handler that compares its payload with an exact record, `e == { path: "a" }`, fixes the payload's row while it is typed, so it is not generalized: its raiser is monomorphic, and cannot be passed where any extension may be raised (the previous rule). No comparison ever silently ignores hidden fields. Simply allowing extra fields in payloads would not have this property: the same comparison would quietly compare only `path`.
+
+General rank-2 polymorphism, when it arrives, subsumes this case.
 
 ## 13. Open questions and deferred areas
 
@@ -891,7 +959,13 @@ Extracted signatures are printed in the same type syntax, including `?` for type
   2. **Whole-program signatures**: specs anywhere contribute. This fits the whole-program model, but an importer's spec could widen a library's signature, for example by adding a label, which makes a library's interface depend on its users.
 
   Recommendation: option 1, so a module's interface is stable and can be read from the module alone.
-- **Root capabilities** (section 6.5). The entry point's name, its signature, and the set of root capabilities are not fixed.
+- **Root capabilities** (section 6.5). The runtime passes `main` exactly the fields its signature names, so the signature is decided. Not fixed: the entry point's name, the set of root capabilities the runtime can provide, and their types.
+- **Polymorphic payloads** (section 12.6). A raiser's payload currently consists of the fields its handler uses, so an implementation that raises more fields than a spec's handler reads fails its check. This is a real problem, not a matter of convenience: the payload type comes from what the spec's handler reads, not from what the implementation raises. The options:
+  1. **Exact payloads**, the current rule. Simple and consistent with exact records, but it ties a function's signature to what its specs' handlers happen to read.
+  2. **Polymorphic raisers**: a handler that reads only `path` accepts any payload with `path`, so its raiser has the type `∀R. ({ path: String, ..R }) -> Never`. This is what the handler actually accepts, and it is sound with `==`.
+  3. **Payloads from aliases**: a spec names the capability's type with an alias, and the alias fixes the payload. Precise, but it needs a way to ascribe a type to a double or a `try`, which specs do not have.
+
+  Recommendation: option 2, as proposed in section 12.6, scheduled with the `$` and `try` formal step rather than with general rank-2 polymorphism. Raisers are second-class and the quantifier is always directly on the raiser's type, so this needs only a narrow, checked form of rank-2: no polymorphic values are ever stored in data. A closed payload is an instance of the polymorphic one, so the move widens what is accepted and breaks no program. Until the step is done, option 1 holds.
 - **Label sets shared between field checks** (formal core, section 9.2).
 - **Overloaded `raise`.** A single overloaded raiser, with payloads told apart by a label field, would require intersection types and effectively reintroduce discriminated unions. Named raisers are the current design.
 - **Termination.** Reading `some` specs as proofs would require totality of the production functions involved, probably through an opt-in marker. Without it, the logical reading is partial correctness.
@@ -912,7 +986,7 @@ The distinctive features interact closely, so a small formal core comes before f
 
 1. **Typing and generalization**, including the extraction rule (section 12.2). *Done*, in the separate formal core document, which also covers label subtyping and variance.
 2. **Row unification** for open records. *Done*, in the same document.
-3. **`$` escape checking.**
+3. **`$` escape checking**, together with the polymorphic payloads proposed in section 12.6.
 4. **Initialization order** in structs (section 3.5).
 5. **Operational semantics of `try`** and unwinding.
 
