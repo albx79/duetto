@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.5/.schema/devbox.schema.json",
+  "packages": [
+    "python@latest",
+    "bubblewrap@latest",
+    "claude-code@latest"
+  ],
+  "shell": {
+    "init_hook": [
+      "echo 'Welcome to devbox!' > /dev/null"
+    ],
+    "scripts": {
+      "test": [
+        "echo \"Error: no test specified\" && exit 1"
+      ],
+        "claude": [
+      "bwrap",
+      "--unshare-all",
+      "--share-net",
+      "--die-with-parent",
+      "--new-session",
+      "--bind", "$PWD", "$PWD",
+      "--ro-bind", "$PWD/.devbox/profile/default", "$PWD/.devbox/profile/default",
+      "--proc", "/proc",
+      "--dev", "/dev",
+      "--tmpfs", "/tmp",
+      "--tmpfs", "/run",
+      "--chdir", "$PWD",
+      "--setenv", "HOME", "/tmp",
+      "--setenv", "TMPDIR", "/tmp",
+      "--setenv", "PATH", "$PWD/.devbox/profile/default/bin",
+      "claude"
+    ]
+    }
+  }
+}

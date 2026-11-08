@@ -711,7 +711,7 @@ spec greeting works {
 }
 ```
 
-With exact records, this establishes exactly `greet : ({ name: String }) -> String`. Constraints from several specs on the same field are combined by unification, not by searching for a common supertype.
+With exact records, this establishes exactly `greet : ({ name: String }) -> String`. When several specs use the same field, the signature is taken from the **most general** use, and every other use must be compatible with it (section 12.2); different record shapes are never merged into a common supertype.
 
 ### 12.2 Polymorphism
 
@@ -729,12 +729,14 @@ This contributes `identity : (?A) -> A`, universally quantified over `A`. A spec
 
 **Combining uses.** Each use of a field in a spec yields a **usage type**, in which `?` variables are rigid. The extraction rule is:
 
-> The candidate signature is the least general type of which every usage type is an instance (anti-unification). It is accepted only if each of its type variables comes from a `?` variable in at least one spec; otherwise the specs conflict.
+> **One use must be the most general.** The signature is one usage type with its `?` variables generalized, and every other use must be compatible with it. Label sets are the exception: they are joined across all uses (section 12.3). If no use qualifies, the specs conflict.
 
-- `(?A) -> A` and `(Int) -> Int` give `(?X) -> X`, accepted: `X` comes from `?A`, and the concrete use is an instance.
-- `(Int) -> Int` and `(String) -> String` also give `(?X) -> X`, but `X` comes from no `?` variable, so the specs conflict: "`f` is used at `Int` in spec P and at `String` in spec Q; did you mean `some(?A)`?"
+- `(?A) -> A` and `(Int) -> Int` give `(?X) -> X`: the concrete use is an instance of the generic one.
+- `(Int) -> Int` and `(String) -> String` conflict: neither is an instance of the other. "`f` is used at `Int` in spec P and at `String` in spec Q; did you mean `some(?A)`?"
+- `(?A, A) -> A` and `(Int, String) -> Int` conflict: the concrete use contradicts the relationship stated by the generic spec. Only a spec that states the more general contract, such as `(?A, ?B) -> A`, can relax it.
+- `(?A, Int) -> A` and `(Int, ?B) -> Int` conflict: each is generic in a different parameter, and no spec states the combined claim.
 
-Generalization therefore happens only when a spec asks for it explicitly. The implementation is then checked against the accepted signature.
+The signature is therefore always exactly what one spec wrote, apart from label sets, and generalization happens only when a spec asks for it explicitly. After extraction, every spec is re-typed against the signatures, and the implementation is checked against them. The formal rules, including defaulting of unconstrained result positions to `Never`, are in the separate formal core document.
 
 ### 12.3 Labels (proposed)
 
