@@ -9,41 +9,14 @@
     "curl@latest",
     "bash@latest",
     "coreutils@latest",
-    "gnugrep@latest"
+    "gnugrep@latest",
+    "which@latest"
   ],
   "shell": {
-    "init_hook": [
-      "echo 'Welcome to devbox!' > /dev/null"
-    ],
+    "init_hook": ["echo 'Welcome to devbox!' > /dev/null"],
     "scripts": {
-      "test": [
-        "echo \"Error: no test specified\" && exit 1"
-      ],
-      "claude": [
-          "bwrap",
-          "--unshare-all",
-          "--share-net",
-          "--die-with-parent",
-          "--new-session",
-          "--bind", "$PWD", "$PWD",
-          "--ro-bind", "/nix/store /nix/store",
-          "--ro-bind", "$PWD/.devbox/nix/profile/default/", "/nix-profile",
-          "--dir", "/home",
-          "--dir", "/home/agent",
-          "--bind", "$HOME/.local/share/agent-sandbox", "/home/agent",
-          "--dir", "/etc",
-          "--ro-bind", "/etc/resolv.conf /etc/resolv.conf",
-          "--ro-bind", "/etc/hosts /etc/hosts",
-          "--proc", "/proc",
-          "--dev", "/dev",
-          "--tmpfs", "/tmp",
-          "--tmpfs", "/run",
-          "--chdir", "$PWD",
-          "--setenv", "HOME", "/tmp",
-          "--setenv", "TMPDIR", "/tmp",
-          "--setenv", "PATH", "/nix-profile/bin",
-          "--", "claude", "--remote-control"
-      ]
+      "test":   ["echo \"Error: no test specified\" && exit 1"],
+      "claude": "set -eu; AGENT_HOME=\"$HOME/.local/share/agent-sandbox\"; mkdir -p \"$AGENT_HOME\"; chmod 700 \"$AGENT_HOME\"; exec bwrap --unshare-all --share-net --die-with-parent --new-session --bind \"$PWD\" \"$PWD\" --ro-bind /nix/store /nix/store --ro-bind \"$PWD/.devbox/nix/profile/default\" /nix-profile --dir /home --dir /home/agent --bind \"$AGENT_HOME\" /home/agent --dir /etc --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt --setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt --setenv NODE_EXTRA_CA_CERTS /etc/ssl/certs/ca-certificates.crt --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run --chdir \"$PWD\" --setenv HOME /home/agent --setenv TMPDIR /tmp --setenv PATH /nix-profile/bin claude"
     }
   }
 }

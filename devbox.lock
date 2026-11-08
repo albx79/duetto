@@ -588,6 +588,71 @@
           "store_path": "/nix/store/fk8c5cqd0npblqv1mcd8swhkcbng84qr-python3-3.14.4"
         }
       }
+    },
+    "which@latest": {
+      "last_modified": "2026-10-02T22:55:44Z",
+      "resolved": "github:NixOS/nixpkgs/55ba7f49ef2962b42cbd126522b7df5f95037679#which",
+      "source": "devbox-search",
+      "version": "2.25",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/rc6brk1pnmwfja58lk00smhkpry9ry77-which-2.25",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/gkrfi5xs3p67absp4izc3zyaydbfx9r7-which-2.25-man",
+              "default": true
+            },
+            {
+              "name": "info",
+              "path": "/nix/store/9r9v09dxjmq5ivqrz8kb0amr2fxbg1s8-which-2.25-info"
+            }
+          ],
+          "store_path": "/nix/store/rc6brk1pnmwfja58lk00smhkpry9ry77-which-2.25"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/j7pw933hnphlvhdpb2pcn6gwhgf3lxyd-which-2.25",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/j80w2lmp03wakvqni4mdkw0xc2m60frx-which-2.25-man",
+              "default": true
+            },
+            {
+              "name": "info",
+              "path": "/nix/store/rrbwc4ix0gv3wgxpl9bi662arqih1al3-which-2.25-info"
+            }
+          ],
+          "store_path": "/nix/store/j7pw933hnphlvhdpb2pcn6gwhgf3lxyd-which-2.25"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/mdwxdimw26b72k7wign651n8clh4jzii-which-2.25",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/2qqgq8ajvhai10hw5mids7djjs1m19z6-which-2.25-man",
+              "default": true
+            },
+            {
+              "name": "info",
+              "path": "/nix/store/yzrbsxy63iq4mclf51b57nlfjvdwwg5w-which-2.25-info"
+            }
+          ],
+          "store_path": "/nix/store/mdwxdimw26b72k7wign651n8clh4jzii-which-2.25"
+        }
+      }
     }
   }
 }
