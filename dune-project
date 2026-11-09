@@ -7,9 +7,9 @@
 (source
  (github username/reponame))
 
-(authors "Author Name <author@example.com>")
+(authors "Albx <albx79>")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
+(maintainers "Albx <albx79>")
 
 (license LICENSE)
 
@@ -17,8 +17,8 @@
 
 (package
  (name duetto)
- (synopsis "A short synopsis")
- (description "A longer description")
+ (synopsis "spec and production in two voices")
+ (description "An experimental programming language where specs define interfaces and check their conformance.")
  (depends ocaml)
  (tags
   ("add topics" "to describe" your project)))
