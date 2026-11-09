@@ -1,6 +1,6 @@
 # Duetto: Formal Core
 
-Nov 8, 2026 · @Alb
+Nov 9, 2026 · @Alb
 
 ## 1. Purpose and scope
 
@@ -9,7 +9,8 @@ This document specifies the formal core of Duetto: the typing rules, spec elabor
 The core is a deliberately small fragment:
 
 - **Included:** `Int`, `String`, and the bottom type `Never`; labels and label `case`; exact records and open rows; lists; lambdas and application; `==`; structs with fields, locals, and recursive groups; and spec entries with `some`, `?` variables, and `ensure`.
-- **Excluded for now:** `try` and raisers, `$` values, recipes and function-carrying `some`, doubles, `every`, untagged record unions, the initialization-order check, and `do`.
+- **Excluded for now:** struct unions, which are the next step (section 9.3); recipes and function-carrying `some`; doubles; `every`; the initialization-order check; and `do`.
+- **Removed from the design:** `try`, raisers and second-class `$` values. Failure is returned as data in a struct union instead, and handlers are deferred (design draft, sections 8 and 16).
 
 Excluded features are added in later steps, each as an extension of these rules. The design draft remains the source of intent; where this document is more precise, it is authoritative for the fragment it covers.
 
@@ -317,14 +318,16 @@ After typing the body, the spec's constraints are solved. Then:
 1. **Rigid variables must stay rigid.** If solving would bind `â` or `ρ̂` to anything other than itself, the spec is ill-typed. For example, `x = some(?A), ensure x == 1` treats `A` as `Int`, and is reported as such.
 2. **Each usage `(f, αk)` yields the usage type** `Uk = solve(αk)`. Rigid variables remain in `Uk`.
 3. **Variables from empty list literals default to `Never`.** `[List]` with no elements marks its fresh element variable as **empty-origin**, and the mark is kept when variables are merged. A flexible variable that is empty-origin and occurs only in positive positions of `Uk` becomes `Never`: the spec observed an empty list there, and `Never` is the least type consistent with that. For example, `ensure empty() == []` gives `() -> [Never]`. No other variable is defaulted: a position the spec merely ignores, such as the elements of a result passed only to `length`, stays flexible, and section 6.4 says when that is allowed. A field whose specs only ever observe an empty result still gets `[Never]`, so an implementation that can return elements fails its check (case R20). That diagnostic must name the cause: "`keep` returns `Int` elements, but its specs only observed an empty list; add a spec that observes a non-empty result."
-4. **Open rows in positive positions are closed.** A flexible row that occurs only in positive positions of `Uk` becomes `∅`: the record consists of the fields the spec observed. This happens whenever a spec projects from a result, as in `c.compare(...)` with `c = mk()`, since `[Proj]` leaves the rest of the row open. Without this step, no spec could fix the exact type of a record result whose fields are functions, because such a result cannot be compared with a record literal. It is the record counterpart of the label rule of section 6.3, decided in section 9.2: a result contains only what specs observe, so an implementation that returns a field no spec observes fails its check (case R22). Flexible rows in negative positions are not closed, and remain unconstrained. Rigid rows, from `..` in `some`, are never closed.
+4. **Open rows stay open.** `[Proj]` leaves the rest of a row open, so a usage that projects from a result, as in `c.compare(...)` with `c = mk()`, has a flexible row there: it says the result has at least the projected fields. Such a row is not closed here. Closing it per usage would make a usage that observes some fields conflict with one that observes all of them, and would make two projections from one result conflict when they are separate usages. At positive positions, extraction instead joins the rows of the usages in one spec and then closes the result (section 6.2). Flexible rows in negative positions remain unconstrained. Rigid rows, from `..` in `some`, are never closed.
 5. **Label-set variables keep their bounds.** A label position in `Uk` is a pair `(L⁻, L⁺)`: the labels that flow into that position, and the labels the spec handles there (with `L⁺` absent if it is still `⊤`). A label position with neither bound counts as unconstrained.
 
 The outputs of a spec, as far as the core is concerned, are its usage types. Runtime execution of specs is unchanged from the design draft.
 
 ## 6. Extraction by anti-unification
 
-For each field `f`, extraction takes all usage types `U1, ..., Un` of `f`, from every spec, and produces either a signature `σf` or a conflict. Rigid variables from different specs are distinct.
+For each field `f`, extraction takes all usage types `U1, ..., Un` of `f`, from every spec, and produces either a signature `σf` or a conflict. Rigid variables from different specs are distinct. The **spec of a usage** is the spec it occurs in.
+
+**One spec supplies the signature.** Label sets and the fields of positive records are joined only over the usages of **one** spec, the spec of the chosen usage (section 6.4). Every other spec must be included in the result: its labels and fields must already be there. A signature is therefore always what one spec wrote, with no exception for labels.
 
 **Reading order.** The signature is defined by section 6.4, with label sets joined as in 6.3. Sections 6.1 and 6.2 describe anti-unification, which is used only to locate disagreements for diagnostics. Soundness does not rest on this section at all: after extraction, every spec is re-typed against the signatures (section 7.4).
 
@@ -359,17 +362,26 @@ For a tuple of record types `{ Fi | ri }`:
 - If every remainder is the same closed `∅`, the result is exact: `{ C | ∅ }`. If every remainder is the same rigid row `ρ̂`, the result keeps it.
 - Otherwise the remainders become a **row generalization variable**, `{ C | R_t }`, and the signature is chosen by the rule of 6.4.
 
-So `{ num: Int | ρ̂ }` and `{ num: Int, b: Int | ∅ }` give `{ num: Int | R }`, and the open usage is the most general one (6.4): the exact usage is its instance with `R := { b: Int | ∅ }`. But `{ name: String | ∅ }` and `{ name: String, age: Int | ∅ }` have no most general usage, since neither is an instance of the other, so they conflict. This is exactness: different record shapes are never joined implicitly.
+So `{ num: Int | ρ̂ }` and `{ num: Int, b: Int | ∅ }` give `{ num: Int | R }`, and the open usage is the most general one (6.4): the exact usage is its instance with `R := { b: Int | ∅ }`. But at a negative position, `{ name: String | ∅ }` and `{ name: String, age: Int | ∅ }` have no most general usage, since neither is an instance of the other, so they conflict. This is exactness: a parameter is never widened by another spec. Within one spec, the struct-union step makes the two shapes a union instead (section 9.3, case U3d).
+
+**Joined rows at positive positions.** At a positive position where no usage has a rigid row, the records of the usages in one spec `P` are **joined**, as label sets are (section 6.3). Some usages are **exact**, with a closed row `{ F | ∅ }`, because they compared the value with a record literal or passed it on whole; others are **open**, with a flexible row `{ F | ρ }`, because they only projected fields. The joined row `J` is:
+
+- if some usage is exact: their common field set `E`, and every exact usage must have exactly `E`, while every open usage's fields must be a subset of `E`;
+- if every usage is open: the union of their fields;
+
+and in both cases `J` is **closed**. Each field's type comes from the usages that have it, and those usages must agree on it. Otherwise the usages conflict: "spec P observes the field `color`, but its complete result has no `color`."
+
+So, within one spec, two open usages `{ div: Int | ρ1 }` and `{ mod: Int | ρ2 }` join to `{ div: Int, mod: Int }` (case A15), and a single open usage gives exactly the fields it observed (case A13). Usages in other specs are not joined but checked for inclusion (section 6.4): an open usage `{ theme: String | ρ }` in one spec is included in `{ theme: String, size: Int }` from an exact usage in another (case A14), while `.div` and `.mod` observed in two separate specs conflict (case R27). A result therefore contains exactly what one spec observes. Two exact usages with different field sets conflict in the core; in the struct-union step they form a union when they are in one spec (section 9.3).
 
 ### 6.3 Label positions
 
-Label positions are joined, not generalized. This is the deliberate exception of section 12.3 of the design draft. For a tuple of label positions `(L⁻i, L⁺i)`:
+Label positions are joined, not generalized, over the usages of one spec `P` (design draft, section 12.3). For the tuple of label positions `(L⁻i, L⁺i)` of `P`'s usages:
 
 - **Negative positions** (parameters, where specs supply values): `S = ⋃ L⁻i`. Only labels that specs actually pass count. A spec's own `case` on a value it also passes to `f` says nothing about `f`, so its upper bound is ignored here.
-- **Positive positions** (results, and parameters of callbacks): `S = ⋃ L⁻i ∪ ⋃ L⁺i`: every label a spec observes, and every label some spec is prepared to handle. **Check:** for each usage with an upper bound, `S ⊆ L⁺i`; otherwise that spec handles too few labels: "spec Q's `case` does not handle `'foo`, which reaches this position in spec P."
+- **Positive positions** (results, and parameters of callbacks): `S = ⋃ L⁻i ∪ ⋃ L⁺i`: every label the spec observes, and every label it is prepared to handle. **Check:** for each usage with an upper bound, `S ⊆ L⁺i`; otherwise one of the spec's `case`s handles too few labels. Within a spec, all `case`s on the position therefore handle the same set.
 - A concrete set from `some(T)` contributes its labels as `L⁻`, since generated values are sources.
 
-**Typos in handled labels.** Because handled labels contribute to `S` at positive positions, a misspelled branch in a spec's `case` on a result, such as `'bogus` for `'gt`, enters the signature. This is accepted deliberately: every other `case` on the same result, in other specs through the check `S ⊆ L⁺` and in production code through exhaustiveness, then fails to cover `'bogus`, so the typo is reported at nearly every point of use except the one where it was made.
+**Typos in handled labels.** Because handled labels contribute to `S` at positive positions, a misspelled branch in a spec's `case` on a result, such as `'bogus` for `'gt`, can enter the signature. Every other spec that observes or handles the result then fails the inclusion check of section 6.4, and production code that handles the result fails exhaustiveness, so the typo is reported at nearly every point of use except the one where it was made.
 
 ### 6.4 Choosing the signature
 
@@ -377,24 +389,27 @@ The signature must be exactly what one spec wrote:
 
 > **One usage must be the most general.** Let `gen(U)` be the usage `U` with its rigid type and row variables replaced by generalization variables, keeping their lacks sets. For a candidate usage `U*`, the **candidate signature** is
 >
-> `σ(U*) = gen(U*)`, with **every label position replaced by its joined set `S`** from section 6.3, computed over all usages at that position.
+> `σ(U*) = gen(U*)`, with **every label position replaced by its joined set `S`** from section 6.3, and **every positive record position without a rigid row replaced by its joined row `J`** from section 6.2, each computed over the usages of `U*`'s spec at that position.
 >
 > The signature is `σf = σ(U*)` for some usage `U*` such that
 >
-> 1. `U*` is **fully constrained**: it contains no flexible type or row variables, and every label position has a non-empty joined set `S`; and
+> 1. `U*` is **fully constrained**: it contains no flexible type variables, no flexible rows except at positive record positions, which are replaced by joined rows, and every label position has a non-empty joined set `S`; and
 > 2. **every** usage `U` is **compatible** with it: `U ⊑ σ(U*)`.
 >
 > If no usage qualifies, extraction fails.
 
-So the chosen usage supplies the type and row **structure** and the **relationships** between positions, while label sets come from **all** usages. Labels are the deliberate exception to "exactly what one spec wrote." In case A6, either usage supplies the structure `(L) -> Int`, and the join gives `L = {'true, 'false}`. A label position is unconstrained only if no usage bounds it at all, in which case `S = ∅` and the usage is not fully constrained.
+So the chosen usage supplies the type **structure** and the **relationships** between positions, and its spec supplies the label sets and the fields of positive records. Every other usage, in that spec or in others, must be compatible, which for labels and fields means **inclusion**. In case A6, either usage supplies the structure `(L) -> Int`, and the join over their one spec gives `L = {'true, 'false}`; with the two `ensure`s in separate specs, neither spec's set includes the other's, and extraction fails (case R26). A label position is unconstrained only if no usage of the spec bounds it, in which case `S = ∅` and the usage is not fully constrained.
 
 **Compatibility.** `U ⊑ σ` holds if there is **one consistent substitution** for `σ`'s generalization variables, types for `X` and rows for `R` respecting their lacks sets, under which `U` matches `σ` position by position:
 
 - `U`'s rigid variables are constants. A flexible variable in `U` matches anything, but every occurrence of the same variable must match consistently: `([β]) -> [β]` does not match `([Int]) -> [String]`.
-- At a **label position** with signature set `S`: in a negative position, `L⁻ ⊆ S`; in a positive position, `L⁻ ⊆ S ⊆ L⁺` (with `L⁺` omitted when absent).
+- At a **label position** with signature set `S`: in a negative position, `L⁻ ⊆ S`; in a positive position, the labels `U` observes or handles are in `S`, and `U` handles all of them: `L⁻ ∪ L⁺ ⊆ S ⊆ L⁺`, that is `L⁻ ⊆ S = L⁺` (with `L⁺` omitted when absent, giving `L⁻ ⊆ S`).
 - At a **positive** position, `Never` in `U` matches any type, since `Never` is the bottom type.
+- At a **positive record position** with joined row `J`: an open record `{ F | ρ }` in `U` matches if its fields `F` are among `J`'s and match their types; an exact record `{ F | ∅ }` matches only if `F` is exactly `J`'s fields. For the usages of `U*`'s spec this holds whenever the join of section 6.2 succeeds; for other specs it is the inclusion check.
 
-If several usages qualify as `U*`, their candidate signatures are equal up to renaming, so the choice does not matter.
+If several usages qualify as `U*`, their candidate signatures are equal up to renaming, so the choice does not matter. For label sets and fields this holds because a spec's join is the union of its usages' contributions: two qualifying specs each include the other's, so their sets are equal.
+
+**Diagnostics for split observations.** When every spec's labels or fields are compatible except that no single spec observes them all, the report says so: "spec P observes `'true` and spec Q observes `'false` at the result of `same`; one spec must observe both."
 
 Compatibility is the rule for **choosing** the signature, and for diagnostics. It is not the soundness guarantee: usages in one spec share variables, and checking them one at a time can miss a spec that is ill-typed as a whole. That is caught by re-typing every spec in `Γsig` (section 7.4).
 
@@ -407,8 +422,8 @@ Signatures are printed with `?` on the first occurrence of each variable, as in 
 ### 6.5 Properties
 
 - **Every usage is compatible with `σf`** (`U ⊑ σf`), by definition, and **every spec is well-typed against all signatures**, by the re-check in section 7.4. The second property is the soundness guarantee.
-- **Generality is never invented.** The signature's type and row structure is always exactly what one spec wrote, never a combination of what several specs wrote. Only label sets are joined across specs.
-- **Holes are never guessed.** The usage that becomes the signature is fully constrained. The only defaulting is to `Never`, only where a spec observed an empty list, and the closing of open rows in positive positions to the fields a spec observed (section 5.3).
+- **Generality is never invented.** The signature is always exactly what one spec wrote, never a combination of what several specs wrote: its type structure comes from one usage, and its label sets and positive record fields from that usage's spec. Joining within a spec adds no type variables.
+- **Holes are never guessed.** The usage that becomes the signature is fully constrained. The only defaulting is to `Never`, only where a spec observed an empty list, and the closing of joined rows at positive positions to the fields one spec observed (section 6.2).
 - **Relationships are preserved.** A relationship stated by a generic spec, such as "both parameters have the same type" in `(â, â) -> â`, can be relaxed only by another spec that explicitly states the more general contract, as in `(b̂, ĉ) -> b̂`. A concrete usage like `(Int, String) -> Int` cannot relax it.
 - **Partially generic specs do not combine.** Usages `(â, Int) -> â` and `(Int, b̂) -> Int` are each generic in a different parameter; neither is compatible with the other, so they conflict. To get `(?X, ?Y) -> X`, a spec must be generic in both.
 
@@ -443,7 +458,7 @@ The generalization variables become rigid, so the implementation must work unifo
 - **In parameter positions**, the body sees a source with `L⁻ = S`, so every label in the signature's set must be handled. A `case` with branches `B` on such a parameter requires `S ⊆ B`.
 - **In result positions**, the body sees a sink with `L⁺ = S`, so it may produce only labels in `S`. Producing `'gt` where the signature says `{'lt, 'eq}` is an error: "`f` returns `'gt`, which no spec observes or handles."
 
-The second rule follows from section 6.3, and matches the design draft's intent that every label of a public interface is exercised by some spec. It applies to every predicate implemented with `==`, whose result has the lower bound `{'true, 'false}`: some spec must observe each label (cases A12 and R17).
+The second rule follows from section 6.3, and matches the design draft's intent that every label of a public interface is exercised by some spec. It applies to every predicate implemented with `==`, whose result has the lower bound `{'true, 'false}`: one spec must observe both labels (cases A12, R17 and R28).
 
 This is how the design draft's rule that "an implementation cannot strengthen its required input shape or change its return type" is enforced: the implementation's type must match the signature exactly, up to the rigid variables.
 
@@ -475,27 +490,31 @@ In usage types, a label position is written as its bounds: `(L⁻, L⁺)`, with 
 | A3 | A2, plus `p = some({ name: String, .. })`, `ensure greet(p) == "Hello, " ++ p.name` | A2's, and `({ name: String \| ρ̂ }) -> String` | `greet : ∀(R lacks name). ({ name: String \| R }) -> String`, printed `({ name: String, .. }) -> String` |
 | A4 | `x = some(?A)`, `ensure identity(x) == x` | `(â) -> â` | `identity : (?X) -> X` |
 | A5 | A4, plus `ensure identity(5) == 5` | `(â) -> â`, `(Int) -> Int` | `identity : (?X) -> X` |
-| A6 | `ensure f('true) == 1`, `ensure f('false) == 0` | `(({'true}, ⊤)) -> Int`, `(({'false}, ⊤)) -> Int` | `f : ('true \| 'false) -> Int` |
+| A6 | In one spec: `ensure f('true) == 1`, `ensure f('false) == 0` | `(({'true}, ⊤)) -> Int`, `(({'false}, ⊤)) -> Int` | `f : ('true \| 'false) -> Int` |
 | A7 | `x = some(?A)`, `ensure pick(x, x) == x`; and `y = some(?A)`, `z = some(?B)`, `ensure pick(y, z) == y` | `(â, â) -> â`, `(b̂, ĉ) -> b̂` | `pick : (?X, ?Y) -> X` |
 | A8 | `xs = some([Int])`, `ensure length(reverse(xs)) == length(xs)`; and `ensure reverse([1, 2]) == [2, 1]` | `([Int]) -> [α]`, `([Int]) -> [Int]` | `reverse : ([Int]) -> [Int]` |
 | A9 | `ensure empty() == []` | `() -> [Never]` | `empty : () -> [Never]` |
 | A10 | Signatures `g : () -> 'a` and `f : ('a \| 'b) -> Int`; production code `h: () -> f(g())` |  | `f(g())` checks `{'a} ⊆ {'a, 'b}` |
 | A11 | `x = 'a`, `y = case x { 'a -> 1, 'b -> 2 }`, `ensure f(x) == 1`; implementation `x -> case x { 'a -> 1 }` | `(({'a}, {'a, 'b})) -> Int` | `f : ('a) -> Int`; the implementation is accepted |
-| A12 | `ensure same(1, 1) == 'true`, `ensure same(1, 2) == 'false`; implementation `(a, b) -> a == b` | `(Int, Int) -> ({'true}, ⊤)`, `(Int, Int) -> ({'false}, ⊤)` | `same : (Int, Int) -> 'true \| 'false`; the implementation is accepted |
-| A13 | `c = mk()`, `ensure c.compare(1, 1) == 'eq`, `ensure c.compare(1, 2) == 'lt`; implementation `() -> { compare: (a, b) -> case a == b { 'true -> 'eq, 'false -> 'lt } }` | `() -> { compare: (Int, Int) -> ({'eq, 'lt}, ⊤) \| ∅ }` | `mk : () -> { compare: (Int, Int) -> 'eq \| 'lt }`; the implementation is accepted |
+| A12 | In one spec: `ensure same(1, 1) == 'true`, `ensure same(1, 2) == 'false`; implementation `(a, b) -> a == b` | `(Int, Int) -> ({'true}, ⊤)`, `(Int, Int) -> ({'false}, ⊤)` | `same : (Int, Int) -> 'true \| 'false`; the implementation is accepted |
+| A13 | `c = mk()`, `ensure c.compare(1, 1) == 'eq`, `ensure c.compare(1, 2) == 'lt`; implementation `() -> { compare: (a, b) -> case a == b { 'true -> 'eq, 'false -> 'lt } }` | `() -> { compare: (Int, Int) -> ({'eq, 'lt}, ⊤) \| ρ̂ }` | `mk : () -> { compare: (Int, Int) -> 'eq \| 'lt }`; the implementation is accepted |
+| A14 | Spec P: `ensure load_settings("p").theme == "dark"`; spec Q: `ensure load_settings("q") == { theme: "light", size: 12 }`; implementation `n -> case n == "p" { 'true -> { theme: "dark", size: 10 }, 'false -> { theme: "light", size: 12 } }` | P: `(String) -> { theme: String \| ρ̂ }`; Q: `(String) -> { theme: String, size: Int \| ∅ }` | `load_settings : (String) -> { theme: String, size: Int }`; the implementation is accepted |
+| A15 | In one spec: `ensure divmod(7, 2).div == 3` and `ensure divmod(7, 2).mod == 1`; implementation `(a, b) -> { div: a / b, mod: a % b }` | `(Int, Int) -> { div: Int \| ρ̂1 }` and `(Int, Int) -> { mod: Int \| ρ̂2 }` | `divmod : (Int, Int) -> { div: Int, mod: Int }`; the implementation is accepted |
 
 Notes:
 
 - **A2 and A3** check against `person -> "Hello, " ++ person.name`, using `++ : (String, String) -> String`. In A3 the parameter has a rigid row, and `[Proj]` unifies `{ name: α | ρ }` with `{ name: String | R̂ }` by setting `ρ := R̂`. With `+ : (Int, Int) -> Int`, the only addition operator, both would be rejected, since `+` is not overloaded for strings.
 - **A5** shows a concrete usage compatible with a generic one.
-- **A6** shows the label join: either usage supplies the structure, and the negative position's set is `{'true} ∪ {'false}`.
+- **A6** shows the label join within one spec: either usage supplies the structure, and the negative position's set is `{'true} ∪ {'false}`. In two specs it is rejected (case R26).
 - **A7** shows a relationship relaxed by a spec that explicitly states the more general contract. The first usage is compatible with the second, with `X := â` and `Y := â`.
 - **A8** shows a wildcard: the length spec leaves the result's element type flexible, since it observed no empty list there (section 5.3), so the concrete spec becomes the signature. Alone, the length spec would be rejected (case R16).
 - **A9** shows a polymorphic constant stated honestly: the spec observed an empty list, so the element type defaults to `Never`, and `[Never]` is usable at any list type, by freshening at `[Var]`.
 - **A10** shows label subtyping through freshening, which plain unification of concrete sets would reject.
 - **A11** shows that a spec's own `case` does not leak into a parameter's signature: the upper bound `{'a, 'b}` is ignored at a negative position.
-- **A12** shows a predicate: the body's `==` has the lower bound `{'true, 'false}`, and the two specs together observe both labels.
-- **A13** shows a field that returns an interface value. Projecting `c.compare` leaves `mk`'s result row open, and since it occurs only in a positive position, it is closed to `{ compare }` (section 5.3). The labels returned by `compare` are in a positive position too, so they follow the same rule as a plain result, and the spec observes both labels the implementation can return (design draft, section 12.3).
+- **A12** shows a predicate: the body's `==` has the lower bound `{'true, 'false}`, and the spec observes both labels. In two specs it is rejected (case R28).
+- **A13** shows a field that returns an interface value. Projecting `c.compare` leaves `mk`'s result row open (section 5.3), and the join at that positive position closes it to `{ compare }` (section 6.2). The labels returned by `compare` are in a positive position too, so they follow the same rule as a plain result, and the spec observes both labels the implementation can return (design draft, section 12.3).
+- **A14** shows inclusion across specs: Q's usage is chosen, and P's open use observes a subset of Q's complete result. Closing P's row on its own, as an earlier rule did, would have made P and Q conflict.
+- **A15** shows two open uses joined within one spec: the result has every field the spec observed. Two projections are separate usages even within one spec, so the join is needed. In two specs it is rejected (case R27).
 
 ### 8.2 Rejected
 
@@ -507,7 +526,7 @@ Notes:
 | R4 | `x = some(?A)`, `ensure x == 1` | Elaboration | The spec binds rigid `â` to `Int` |
 | R5 | Signature `identity : (?X) -> X`, implementation `x -> x + 1` | Checking | Rigid `X` cannot unify with `Int` |
 | R6 | Only spec: `ensure cmp(1, 2) == 'lt`; implementation may return `'gt` | Checking | "`cmp` returns `'gt`, which no spec observes or handles" |
-| R7 | Spec P: `ensure f(1) == 'foo`; spec Q: `ensure case f(2) { 'a -> 1, 'b -> 2 } == 1` | Extraction | `{'foo, 'a, 'b} ⊄ {'a, 'b}`: Q does not handle `'foo` |
+| R7 | Spec P: `ensure f(1) == 'foo`; spec Q: `ensure case f(2) { 'a -> 1, 'b -> 2 } == 1` | Extraction | With P's set `{'foo}`, Q handles `'a` and `'b`, which are not in it; with Q's set `{'a, 'b}`, P observes `'foo`, which is not in it: "Q's `case` does not handle `'foo`, which spec P observes" |
 | R8 | A field `helper` that no spec mentions | Pipeline | "no spec uses `helper`" |
 | R9 | Signature `greet : ({ name: String }) -> String`, implementation uses `person.age` | Checking | The exact row `∅` cannot absorb `age` |
 | R10 | `ensure pick(x, x) == x` with `x = some(?A)`, and `ensure pick(1, "a") == 1` | Extraction | The concrete usage contradicts the relationship stated by the generic spec: "spec P states that both parameters of `pick` have the same type, but spec Q calls it with `Int` and `String`" |
@@ -522,7 +541,13 @@ Notes:
 | R19 | Local `r = { id: x -> x, both: () -> { a = id(1), b = id("s"), <<a } }` | Checking | `id` is a field of a nested record, so it is not generalized (section 4.2): it cannot be used at both `Int` and `String` |
 | R20 | Only spec: `xs = some([Int])`, `ensure keep(xs) == []`; implementation `xs -> xs` | Checking | The result's element type is empty-origin, so the signature is `([Int]) -> [Never]`, and `Int` cannot unify with `Never`. The diagnostic says the specs only observed an empty list (section 5.3) |
 | R21 | Only spec: `c = mk()`, `ensure c.compare(1, 2) == 'lt`; implementation as in A13 | Checking | The signature is `() -> { compare: (Int, Int) -> 'lt }`, and the body can return `'eq`: "`mk`'s `compare` returns `'eq`, which no spec observes or handles" |
-| R22 | Specs as in A13; implementation `() -> { compare: (a, b) -> ..., name: "by value" }` | Checking | `mk`'s result row was closed to the observed field `compare` (section 5.3), so the extra field `name` cannot be absorbed: "`mk` returns the field `name`, which no spec observes" |
+| R22 | Specs as in A13; implementation `() -> { compare: (a, b) -> ..., name: "by value" }` | Checking | `mk`'s result row was joined and closed to the observed field `compare` (section 6.2), so the extra field `name` cannot be absorbed: "`mk` returns the field `name`, which no spec observes" |
+| R23 | Spec P: `ensure load_settings("p").color == "red"`; spec Q as in A14 | Extraction | P's open use observes `color`, which Q's exact result lacks: "spec P observes the field `color`, but spec Q's complete result has no `color`" (section 6.2) |
+| R24 | Spec P: `ensure f(1) == { ok: 1 }`; spec Q: `ensure f(0) == { err: "zero" }` | Extraction | Two exact uses at a result with different field sets. They conflict, and still do with struct unions, since no one spec observes both shapes (section 9.3, case U3) |
+| R25 | In one spec: `ensure load_settings("p").size == 1`, `ensure load_settings("q").size == "big"` | Extraction | The joined field `size` has the types `Int` and `String` in two uses, which do not unify |
+| R26 | Spec P: `ensure f('true) == 1`; spec Q: `ensure f('false) == 0` | Extraction | Neither spec's set includes the other's: "spec P passes `'true` and spec Q passes `'false` to `f`; one spec must pass both, or use `some('true \| 'false)`" |
+| R27 | Spec P: `ensure divmod(7, 2).div == 3`; spec Q: `ensure divmod(7, 2).mod == 1` | Extraction | Neither spec's fields include the other's: "spec P observes `div` and spec Q observes `mod`; one spec must observe both" |
+| R28 | Spec P: `ensure same(1, 1) == 'true`; spec Q: `ensure same(1, 2) == 'false` | Extraction | "spec P observes `'true` and spec Q observes `'false` at the result of `same`; one spec must observe both" |
 
 ## 9. Simplifications and open points
 
@@ -537,8 +562,9 @@ Notes:
 
 ### 9.2 Decisions and open points
 
-- **Result fields must be observed (decided).** An open row in a positive position is closed to the fields a spec observed (section 5.3, case R22). This follows the label rule below: a public result contains only what specs observe. It is needed because no other spec form can fix the exact type of a record result whose fields are functions.
-- **Result labels must be observed (decided).** By sections 6.3 and 7.2, an implementation may return only labels that some spec observes or handles (cases R6 and R17). This is kept, because it is what makes every label of a public interface exercised by some spec. Its cost falls on every predicate implemented with `==`: a spec suite must observe both `'true` and `'false` (case A12). A spec suite that tests only the positive case of a predicate is incomplete, so the cost is accepted. The same holds for fields that return interface values, such as an ordering: every label its functions return must be observed (cases A13 and R21). No adjustment of the rule is needed for them, only guidance (design draft, sections 10.4 and 12.3). One alternative was considered and not adopted: counting the observations of law specs, which check orderings for every label. Law specs do not call the field, though, so they produce no usage of it.
+- **One spec supplies the signature (decided).** Label sets, positive record fields, and in the struct-union step union members, are joined only over the usages of one spec; other specs must be included (sections 6 and 6.4, cases R26 to R28). An earlier rule joined label sets and fields across all specs, as a deliberate exception to "a signature is what one spec wrote". It was dropped for a single rule: record shapes could not be joined across specs without widening parameters, and the cost of the single rule, one spec that observes every outcome, is small, for example `ensure [same(1, 1), same(1, 2)] == ['true, 'false]`.
+- **Result fields must be observed (decided).** A record at a positive position is joined over one spec's usages and closed to the fields they observe, with an exact use fixing the field set (section 6.2, cases A13 to A15, R22, R23 and R27). This follows the label rule below: a public result contains only what one spec observes. It replaces an earlier rule that closed each usage's row separately, which made a spec that projects some fields conflict with one that compares the whole result. It is needed because no other spec form can fix the exact type of a record result whose fields are functions.
+- **Result labels must be observed (decided).** By sections 6.3 and 7.2, an implementation may return only labels that some spec observes or handles (cases R6 and R17). This is kept, because it is what makes every label of a public interface exercised by some spec. Its cost falls on every predicate implemented with `==`: one spec must observe both `'true` and `'false` (cases A12 and R28). A spec suite that tests only the positive case of a predicate is incomplete, so the cost is accepted. The same holds for fields that return interface values, such as an ordering: every label its functions return must be observed, by one spec (cases A13 and R21). No adjustment of the rule is needed for them, only guidance (design draft, sections 10.4 and 12.3). One alternative was considered and not adopted: counting the observations of law specs, which check orderings for every label. Law specs do not call the field, though, so they produce no usage of it.
 - **Label sets shared between field checks (open).** Section 3.2 shares a local's label-set variables across all field checks, so one field's use of a local can widen a label set that another field sees (case R18). That is sound but not modular, and the resulting errors appear far from their cause. The options:
   1. **Keep sharing**, the current rule. Simple and sound; diagnostics must name both fields.
   2. **Copy per field**: each field check uses its own copy of the locals' label-set variables, with their bounds. Field checks become independent, but a local's label sets still mix all uses within one field.
@@ -551,23 +577,35 @@ Notes:
 
 In the order of the design draft's section 13.3:
 
-1. **`$` escape checking**, including `$` in function types, second-class records, and the polymorphic payloads proposed in the design draft's section 12.6.
+1. **Struct unions** (design draft, sections 8, 9 and 12.4): types that are unions of labels and exact records with distinct field sets, `case` on shape with exact and open patterns, the inclusion of a record in every union that contains its shape, and recursive aliases. Union formation at extraction is **decided** (design draft, section 12.4) and follows the one-spec rule of section 6: within one spec, distinct exact shapes at a position form a union, at positive and negative positions alike, as label sets do; `some` with a union type, and one double whose stubs return different shapes, are ways for one spec to state a union. Other specs may observe single members, by inclusion. Shapes observed only in separate specs conflict (case R24). The step must extend the join of section 6.2: the member shapes of a spec's join are those of its exact usages, and an open usage must fall within one member.
 2. **Initialization order**, specified as a check over the dependency graph of section 4.2.
-3. **Operational semantics of `try`** and unwinding.
 
 After those, the rules should be validated by a reference checker that reproduces the test cases of section 8.
 
-**Cases the `$` and `try` step must reproduce.** These are stated informally in the design draft and must become rules and test cases of that step:
+**Cases the struct-union step must reproduce.**
 
 | # | Situation | Expected |
 | --- | --- | --- |
-| T1 | The design draft's section 11.1 example: one double with a `returns` stub and a `raises` stub, two `try`s whose handlers use `e.path` | Accepted: `read_file : ({ read_text: (String, $ ({ path: String }) -> Never) -> String }, String, $ ({ path: String }) -> Never) -> String` |
+| U1 | The design draft's section 11.1 example, in one spec: one double whose `read_text` stubs return `{ ok: ... }` and `{ not_found: { path } }`, and a `case` in `read_file` with one arm per shape | Accepted: `read_file : ({ read_text: (String) -> { ok: String } \| { not_found: { path: String } } }, String) -> { ok: String } \| { err: String }` |
+| U2 | As U1, but the two stubs are in two separate doubles, in two specs | Rejected: each double gives `read_text` one shape, and the uses conflict at a negative position |
+| U3 | Both `ensure`s of case R24 in one spec | Accepted: `f : (Int) -> { ok: Int } \| { err: String }` |
+| U3b | As U3, plus a spec R with `ensure f(2) == { ok: 2 }` | Accepted, with the same signature: R observes one member of the union |
+| U3c | In one spec: `ensure g({ ok: 1 }) == 1`, `ensure g({ err: "e" }) == 0`, or `x = some({ ok: Int } \| { err: String })` with `ensure g(x) == ...`; implementation with a `case` on both shapes | Accepted: `g : ({ ok: Int } \| { err: String }) -> Int`. The two calls in separate specs conflict |
+| U3d | In one spec: `greet({ name: "Ada" })` and `greet({ name: "Ada", age: 3 })`; implementation `p -> "Hello, " ++ p.name` | Extraction gives `greet : ({ name: String } \| { name: String, age: Int }) -> String`; checking rejects the projection on a union, so the shape typo is still reported |
+| U4 | A `case` whose exact pattern `{ ok, warn }` follows an open pattern `{ ok, .. }` | Rejected: the later branch is fully covered by the earlier one (design draft, section 9) |
+| U5 | Projection `r.ok` from a value of a union type | Rejected: unions have no projection; use `case` (design draft, section 9) |
+
+**Deferred: handlers.** `try`, raisers and `$` values have been removed from the design and deferred (design draft, section 16). The cases below were collected for them and are kept for when handlers are reconsidered; their references use the appendix's numbering.
+
+| # | Situation | Expected |
+| --- | --- | --- |
+| T1 | The design draft's section D11.1 example: one double with a `returns` stub and a `raises` stub, two `try`s whose handlers use `e.path` | Accepted: `read_file : ({ read_text: (String, $ ({ path: String }) -> Never) -> String }, String, $ ({ path: String }) -> Never) -> String` |
 | T2 | As T1, but the success stub and the raising stub are in two separate specs | Rejected at extraction: neither use is fully constrained, since one leaves `read_text`'s result open and the other its raiser's type |
 | T3 | As T1, but the double raises `$nf({ path: "a.cfg", line: 3 })` | Under the current rule, rejected when checking `read_file`: its raiser takes `{ path: String }`, from the handlers, but is passed where `{ path: String, line: Int }` is expected. **Under the proposal, accepted**: the handlers give `∀R. ({ path: String, ..R }) -> Never`, which is instantiated with `R := { line: Int }` |
-| T4 | A `raises` stub whose raiser is not bound by the same stub, or a response that mentions an outer `$`-name | Compile error (design draft, section 11) |
+| T4 | A `raises` stub whose raiser is not bound by the same stub, or a response that mentions an outer `$`-name | Compile error (design draft, section D11) |
 | T5 | A double for a higher-order function, `fold(xs, $f) returns $f(1)` | Accepted: `$f(1)` is an ordinary call, so `$f`'s result is not `Never` |
-| T6 | `$h -> $h.num(n)` returned from a function, and `map(xs, $f)` collecting `$f(x)` | Accepted: call results are first-class (design draft, section 9.1) |
-| T7 | `$times_two = x -> x * 2` passed to `map` in a spec | Accepted, and establishes `map`'s parameter as a `$`-parameter (design draft, section 12.4) |
-| T8 | A recursive `$`-local `$go = x -> ... $go(...)`, and a plain sibling that mentions it | The `$`-local is accepted; the plain sibling is an error (design draft, section 3.5) |
-| T9 | A handler that ignores its payload, with a double that raises `{ path: "a.cfg" }` | Under the current rule, rejected when checking: the payload is `{}`. **Under the proposal, accepted**: the handler gives `∀R. ({ ..R }) -> Never` (design draft, section 12.6) |
+| T6 | `$h -> $h.num(n)` returned from a function, and `map(xs, $f)` collecting `$f(x)` | Accepted: call results are first-class (design draft, section D9.1) |
+| T7 | `$times_two = x -> x * 2` passed to `map` in a spec | Accepted, and establishes `map`'s parameter as a `$`-parameter (design draft, section D12.4) |
+| T8 | A recursive `$`-local `$go = x -> ... $go(...)`, and a plain sibling that mentions it | The `$`-local is accepted; the plain sibling is an error (design draft, section D3.5) |
+| T9 | A handler that ignores its payload, with a double that raises `{ path: "a.cfg" }` | Under the current rule, rejected when checking: the payload is `{}`. **Under the proposal, accepted**: the handler gives `∀R. ({ ..R }) -> Never` (design draft, section D12.6) |
 | T10 | Under the proposal: a production caller whose handler compares its payload with an exact record, `not_found(e) -> case e == { path: "a" } { ... }`, passes its raiser to `read_file` | Rejected: the raiser is monomorphic, and `read_file`'s parameter requires a raiser polymorphic in the rest of the payload |

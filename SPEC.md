@@ -1,6 +1,6 @@
 # Duetto Language Draft Specification
 
-Nov 8, 2026 · @Alb
+Nov 9, 2026 · @Alb
 
 ## 1. Overview
 
@@ -23,19 +23,18 @@ Specs serve three purposes at once:
 - **Fields are public, locals are private.** `name: expr` is part of a struct and, at file level, exported; `name = expr` is visible only to later entries.
 - **Type variables are marked** with `?` at their first occurrence: `some(?A)`.
 - Records are **exact** by default, with opt-in row polymorphism: `{ f: T, .. }` and `{ f: T, ..?R }`.
-- Unions are restricted to **unions of labels**, eliminated by an exhaustive `case`.
+- Unions are restricted to **struct unions** of labels and exact records, eliminated by an exhaustive `case`.
 - **No type-directed dispatch**; closures are the only form of dynamic dispatch.
 - `==` is **built-in, total, and non-overridable**; functions compare by definition site plus captured values.
-- Failure is a **capability** introduced by `try`, whose raisers are defined by the branches of a following `case`.
+- **Failure is data**: a fallible computation returns a struct union, such as `{ ok: A } | { err: E }` (section 8). Handlers, raisers and second-class `$` values are deferred (section 16).
+- **Struct unions**: unions of labels and exact records with distinct field sets, consumed by `case` on their shape (section 9). A union is formed when one spec uses all its shapes (section 12.4).
 - **No `type` keyword.** Uppercase entry names bind types, with the same `:` (public) and `=` (private) rule as values.
-- The **`$` sigil** marks second-class, non-escaping values.
 - `some(T)` synthesizes only **function-free** values; function-carrying values come from a **recipe catalogue**.
 - **Law specs** mark interfaces in backticks in their titles and bind each with exactly one `every(...)`.
-- Double expectations are explicit `ensure`s over **`calls`**, which records only first-class arguments; a spec names them with a projection function when there are several.
+- Double expectations are explicit `ensure`s over **`calls`**; a spec names the arguments with a projection function when there are several.
 - **Operators are not overloaded**: `++` concatenates strings, `+` adds integers.
-- **Second-class values are paths**, not arbitrary expressions rooted at a `$`-name: the result of a call is always first-class.
-- **Doubles raise through a raiser** they receive in the call, bound by a `$`-name in the stub, with `raises $r(payload)`. A raiser's result is `Never` by construction, and its payload is exact (section 12.6).
-- **A value is catalogued only if its behavior comes from production code**: it is bound in a spec, function-carrying, concrete, and every closure it reaches was written in production code. Values reaching a spec closure or a double are fixtures, so recipes never contain doubles and are never invalidated. Recipes are limited by depth, not by rounds, and laws apply to every value usable as their interface.
+- **One spec supplies the signature**: label sets, the fields of record results, and union members are joined only within one spec, and other specs must be included in it. Labels are no longer joined across specs (sections 12.2 to 12.4).
+- **A value is catalogued only if its behavior comes from production code**: it is bound in a spec, function-carrying, concrete, and every closure it reaches was written in production code. Values reaching a spec closure or a double are fixtures, so recipes never contain doubles. Recipes are limited by depth, not by rounds, and laws apply to every value usable as their interface.
 - **Law specs with no subject are vacuous**, and do not prevent a pass.
 - **Specs appear only at file level**, and capabilities originate at the program's entry point, which receives exactly the root capabilities its signature names.
 
@@ -43,7 +42,7 @@ Specs serve three purposes at once:
 
 1. **Specs define interfaces.** Public signatures are inferred from spec usage, not from implementations.
 2. **Shape and behavior live together.** A spec describes both what a function consumes and produces and what it must do.
-3. **Explicit authority.** Access to resources, and the ability to fail, are explicit values passed to functions, never ambient powers.
+3. **Explicit authority.** Access to resources is an explicit value passed to functions, never an ambient power, and the possibility of failure is explicit in a function's result type.
 4. **Whole-program spec reuse.** A value constructed in one spec can be catalogued and reused by others.
 5. **Effect-free deterministic specs.** Specs are pure, deterministic, and replayable.
 6. **Parametricity is preserved.** Code cannot inspect the runtime type of a value, so polymorphic specs test real polymorphic contracts.
@@ -82,7 +81,6 @@ Entries  ::= (Entry ("," Entry)* ","?)?
 Entry    ::= name ":" Expr             -- field
            | Path                      -- punned field: { x }, { p.name }, { Bool }
            | name "=" Expr             -- local
-           | "$" name "=" Expr         -- second-class local
            | TypeName TypeParams? ":" TypeExpr   -- public type
            | TypeName TypeParams? "=" TypeExpr   -- private type
            | spec SpecTitle Struct     -- file level only (section 7)
@@ -119,23 +117,23 @@ This is sugar for `{ tmp1 = ..., tmp2 = ..., res: tmp1 + tmp2 }.res`.
 ```text
 Lambda ::= Params "->" Expr
 Params ::= Param | "(" (Param ("," Param)*)? ")"
-Param  ::= Name | "$" Name
+Param  ::= Name
 ```
 
 ```duetto
 adder = n -> x -> x + n,
 sort_by = (xs, ord) -> ...,
-map = (xs, $f) -> ...,
+map = (xs, f) -> ...,
 answer = () -> 42,
 ```
 
-There is no separate function-definition form. A lambda body extends as far right as possible, ending at a comma, a closing bracket, or the end of its entry. A longer body is a block: `x -> { ..., <<result }`. A `$` parameter receives a second-class value (section 9).
+There is no separate function-definition form. A lambda body extends as far right as possible, ending at a comma, a closing bracket, or the end of its entry. A longer body is a block: `x -> { ..., <<result }`.
 
 ### 3.5 Scoping and recursion
 
 The same rule applies in every struct: files, modules, records, and blocks, for fields and locals alike.
 
-- Bindings whose right-hand side is a **lambda literal** form one recursive group. They can refer to themselves and to each other in any order, and their bodies may mention any binding in the struct. The group is a scoping rule only: typing (formal core, section 4.2) and function identity (section 5.1) follow the actual references between its members. A `$`-local bound to a lambda literal, such as `$go = x -> ...`, belongs to the group too, so a helper that uses a raiser can be recursive. A sibling that mentions it counts as capturing a `$`-name, so that sibling must also be a `$`-local (section 9.1). Mentioning a sibling counts as capturing it for this rule, although it does not count as a capture for function identity (section 5.1): identity only concerns first-class closures, while this rule keeps a first-class closure from holding a second-class one.
+- Bindings whose right-hand side is a **lambda literal** form one recursive group. They can refer to themselves and to each other in any order, and their bodies may mention any binding in the struct. The group is a scoping rule only: typing (formal core, section 4.2) and function identity (section 5.1) follow the actual references between its members.
 - Every other binding is **computed**, and is visible only to later entries.
 - **Initialization order.** For each computed binding `b`, collect the lambdas reachable from `b`'s initializer: those it mentions, then those they mention, transitively. Every computed binding those lambdas mention must come **before** `b`. This guarantees that no computation can read a binding that is not yet initialized.
 
@@ -216,9 +214,9 @@ Ordering(A): { compare: (A, A) -> OrderingResult },
 
 Labels are primitive atomic values and singleton types. Duetto has no primitive `Bool`; booleans are the alias `'true | 'false`.
 
-Unions are restricted to labels. A union such as `Int | String`, or a union of record types, is not allowed. Consuming a label union is done by matching on the label (section 6.3), which is ordinary value inspection, not type inspection. A singleton label type is a subtype of any union containing it.
+Unions may contain labels and exact records with distinct field sets: these are struct unions (section 9). A union such as `Int | String` is not allowed. Consuming a label union is done by matching on the label (section 6.3), which is ordinary value inspection, not type inspection. A singleton label type is a subtype of any union containing it.
 
-There are no tagged constructors. Data that would conventionally be a tagged union is expressed with records, lists, labels, or by passing functions. Section 13.4 plans two extensions instead of tagged unions: **untagged unions of labels and records**, and **handler-interface `case` sugar**.
+There are no tagged constructors. Data that would conventionally be a tagged union is a struct union, whose members are told apart by their field sets (section 9).
 
 ### 4.3 Exact records
 
@@ -258,7 +256,7 @@ ys = some([Key]),
 
 - In a spec, the scope of a type variable is the enclosing spec. In an extracted signature, it is the whole signature: signatures are prenex.
 - Type alias parameters, as in `Ordering(A): ...`, are already in binding position and need no `?`.
-- In a type alias, a `?` variable that is not a parameter is quantified **per call**: at the smallest function type that contains all its occurrences. In `match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R`, that is the type of `match`, so each call of `match` chooses its own `R`. This needs rank-2 polymorphism (section 13.4), and the rule is provisional until that step.
+- In a type alias, a `?` variable that is not a parameter is quantified **per call**: at the smallest function type that contains all its occurrences. In `match: ({ num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R`, that is the type of `match`, so each call of `match` chooses its own `R`. This needs rank-2 polymorphism (section 13.4), and the rule is provisional until that step.
 - A bare name that does not resolve to a type is an error. A typo such as `Strng` is reported, instead of silently becoming a fresh type variable.
 
 Since production code has no type annotations, `?` appears only in specs, extracted signatures, and type aliases.
@@ -267,7 +265,7 @@ Since production code has no type annotations, `?` appears only in specs, extrac
 
 Duetto has no tuples. Parentheses mean grouping and parameter lists only, and `(x, y) -> ...` is a parameter list, not a tuple pattern.
 
-Tuples could be added cheaply as sugar for records with numeric fields, as in Standard ML, but their main appeal would be unifying them with argument lists, so that every function takes a single argument. That unification conflicts with second-class values. Second-class records (section 9.5) can hold a `$` value, so in `map = (xs, $f) -> ...` the argument tuple could be one. But a record's class is all or nothing: every projection from a second-class record is second-class (section 9.1). The tuple would make `xs` second-class too, and `map` could not return anything built from it. Unifying the two would need **per-field class**, with types recording which fields are second-class, and that is the remaining obstacle. Without the unification, the remaining benefit is small. Named records serve better, and cost no more to write:
+Tuples could be added cheaply as sugar for records with numeric fields, as in Standard ML, but their main appeal would be unifying them with argument lists, so that every function takes a single argument. The current design has no obstacle to that unification, but the deferred handler design does: it has second-class values, and a tuple holding one would make every argument second-class, so unifying tuples with argument lists would need per-field class (section D9). Adopting tuples now would make handlers harder to add later, for a small benefit. Named records serve better, and cost no more to write:
 
 ```duetto
 divmod = (a, b) -> { div: a / b, mod: a % b },
@@ -275,7 +273,7 @@ divmod = (a, b) -> { div: a / b, mod: a % b },
 
 For generic code, the standard library picks field names once, as in `zip` returning `[{ left: A, right: B }]`.
 
-This decision will be revisited only if an elegant way is found to unify tuples with argument lists, even in the presence of `$` values: concretely, a light way to give record fields their own class.
+This decision will be revisited if handlers are permanently dropped, or if a light way is found to give record fields their own class.
 
 ## 5. Equality
 
@@ -287,7 +285,6 @@ This decision will be revisited only if an elegant way is found to unify tuples 
 | Lists | same length and pairwise equal elements |
 | Records | same fields and pairwise equal field values |
 | Functions | same lambda literal and equal captured values (section 5.1) |
-| `$` values | not comparable: compile error |
 
 ### 5.1 Function equality
 
@@ -348,13 +345,13 @@ Functions are first-class values and may capture variables from their defining s
 
 ### 6.2 Dispatch
 
-Calling a closure is the only form of dynamic dispatch. Calling `ord.compare(a, b)` runs whichever function the record holds; this is how interfaces, resource handles, doubles, and failure capabilities work.
+Calling a closure is the only form of dynamic dispatch. Calling `ord.compare(a, b)` runs whichever function the record holds; this is how interfaces, resource handles, and doubles work.
 
 There is **no type-directed dispatch**: no methods looked up by runtime type, no type tests, no runtime overload resolution. Code cannot observe the runtime type of a value. This preserves parametricity, which `some(?A)` relies on (section 7.3).
 
-### 6.3 Label case
+### 6.3 Case
 
-Label unions are consumed with `case`. It is checked for exhaustiveness against the closed union of the scrutinee's type. Branches are comma-separated; a branch body is an expression or a block.
+Label unions, and struct unions (section 9), are consumed with `case`. It is checked for exhaustiveness against the closed union of the scrutinee's type. Branches are comma-separated; a branch body is an expression or a block.
 
 ```duetto
 sign_name: r -> case r { 'lt -> "less", 'eq -> "equal", 'gt -> "greater" },
@@ -395,12 +392,12 @@ The entry point's name, the set of root capabilities, and their types are not ye
 
 ### 6.6 Partial primitives
 
-A primitive that cannot produce a result for some arguments needs a defined meaning, since failure requires a raiser (section 8) and there are no ambient aborts. The cases known so far:
+A primitive that cannot produce a result for some arguments needs a defined meaning, since there are no ambient aborts: failure must be returned as data (section 8). The cases known so far:
 
 - **Division and remainder by zero**, `a / 0` and `a % 0`.
 - **Integer overflow**, if `Int` is bounded.
 - **Access by position**, such as the first element of an empty list or a character past the end of a string. None of these exists yet: lists are consumed through `fold` and similar total primitives (section 4.5).
-- **Parsing**, as in `parse_int`, already takes a raiser (section 8.1).
+- **Parsing**, as in `parse_int`, already returns a union (section 8).
 
 Division is an open question (section 13.1). Non-termination is not failure but divergence, and is discussed under termination (section 13.1).
 
@@ -463,133 +460,61 @@ If no spec could ever construct a recipe for `T`, the compiler reports it: "no s
 
 The distinction between function-free types (synthesizable by `some`) and function-carrying types (drawn from recipes) is internal to the compiler and test runner. It has no surface syntax: production code never needs to restrict a parameter to synthesizable types.
 
-## 8. Failure as a capability
+## 8. Failure as data
 
-The ability to fail is an explicit value, like a filesystem handle. A function can abort only if it was given a raiser. There are no ambient exceptions.
-
-### 8.1 Concepts
-
-1. `try` introduces a **failure capability**: a record of raisers, bound to a `$`-name. Its body is a block.
-2. A `case` directly after the `try` block lists the **handler branches**. Each branch defines **one raiser** of that record, together with the expression or block that runs when it is called.
-3. Calling a raiser **unwinds** to its `try` and runs the matching branch. The value of that branch becomes the value of the `try` expression; if no raiser is called, the value is the block's result.
+A computation that can fail returns a value that says so: a **struct union** (section 9) with one member for success and one for each kind of failure. There are no exceptions, no ambient aborts, and nothing unwinds. The standard library's idiom is a `Result` alias:
 
 ```duetto
-config = try $errs {
-  text = read_file(fs, path, $errs.not_found),
-  <<parse_config(text, path, $errs.parse_error)
-} case {
-  not_found(e) -> default_config(),
-  parse_error(e) -> log_and_default(log, e.path, e.line),
-}
+Result(A, E): { ok: A } | { err: E },
+
+port = case parse_int(text) {
+  { ok } -> ok,
+  { err } -> 8080,
+},
 ```
 
-Logging is authority too, so `log_and_default` receives a `log` capability explicitly, like `fs` (section 6.5).
+Here `parse_int` returns `{ ok: Int } | { err: { text: String } }`. The name `Result` and the field names `ok` and `err` are a library convention, not keywords: any struct union with distinct field sets works the same way, and a function with several kinds of failure can return `{ ok: Config } | { not_found: { path: String } } | { parse_error: { path: String, line: Int } }`.
 
-As with any `case`, the braces may be omitted when there is exactly one branch:
+- **Failure is visible in the type.** A caller cannot use the result without a `case` that covers every member (section 9), so an unhandled failure is a type error.
+- **Failure values are plain data.** They print in failure messages, `some` can generate them, `==` compares them, and recipes and laws need no special cases.
+- **Explicit authority is unchanged.** Capabilities such as file systems remain explicit values (section 6.5). A capability that can fail returns a union, like any other function.
+- **Error translation** is an ordinary `case`: `{ err } -> { err: { path: p, reason: "syntax" } }`.
+- **One spec observes both outcomes.** A spec that sees both `parse_int("7") == { ok: 7 }` and `parse_int("x") == { err: { text: "x" } }` gives `parse_int` its union result (section 12.4). Other specs may then test single outcomes.
+
+**Propagation.** Without further sugar, every fallible call needs a `case`, even when the caller only passes the failure on. A propagation form, provisionally written `e?`, would mean "the `ok` value of `e`, or else the enclosing function returns `e`'s failure unchanged". It can be defined without types, since the members it distinguishes are visible by shape. It is deferred (section 13.2): the proof-of-concept compiler is written without it.
+
+**Handlers are deferred.** Earlier revisions handled failure with `try`, handler `case`, and second-class raisers. That design is kept in section 16. It can be added later without breaking programs that return unions.
+
+## 9. Struct unions
+
+A **struct union** is a union of exact records with distinct field sets, possibly together with labels. Exact records can be told apart by their field sets, so such a union is unambiguous; with width subtyping it would not be. There are no tagged constructors: a member's field set is its tag.
 
 ```duetto
-port = try $errs {
-  <<parse_int(text, $errs.bad_number)
-} case bad_number(e) -> 8080,
+Expr: { num: Int } | { add: { l: Expr, r: Expr } },
+Option(A): 'none | { some: A },
+Result(A, E): { ok: A } | { err: E },
+
+eval = e -> case e {
+  { num } -> num,
+  { add } -> eval(add.l) + eval(add.r),
+},
 ```
 
-There is no ambiguity with a label `case`. A label `case` has a scrutinee (`case r { ... }`), while a handler `case` follows a `try` block directly; since Duetto has no juxtaposition application, a `case` in that position can only be the handler clause. The branch shapes also differ: labels (`'lt -> ...`) versus raisers (`not_found(e) -> ...`).
+- A union may contain labels and exact records, as long as every member has a **distinct label or field set**, and **no member is a type variable**. The last condition preserves parametricity: code never tests whether a value is an `A`, only which known shape it has.
+- **Members are exact.** A member with an open row, such as `{ name: String, .. }`, would overlap every record with `name`, so it is forbidden.
+- **Distinctness is checked after expansion.** Member aliases are flattened first, as in `Option(A) | { y: Int }`, and recursive aliases are unfolded one level. A member that expands to a type variable is excluded. Recursive aliases such as `Expr` are needed, so they move from deferred to required (section 13.2).
+- Values are plain data: they print well, `some(Expr)` synthesizes them, and `==` works structurally.
+- **Projection on a union is an error** for now: `u.name` is rejected even if every member has `name`, since allowing it would amount to width subtyping. The value must go through `case`. This may be revisited.
+- **A record is included in every union that contains its shape**, as a label is included in every label set that contains it. So `{ ok: 1 }` can be returned where `{ ok: Int } | { err: String }` is expected, and the branches of a `case` may produce different members of one union.
+- **Dispatch on shape is not type-directed dispatch.** A `case` inspects which known shape a value has, as a label `case` inspects which label it is (section 6.2). The kind of `case` is determined by its branch patterns, never by the scrutinee's type.
 
-### 8.2 Types
+**Patterns.** A record pattern may be exact or open:
 
-In the example, `$errs` has the exact record type:
+- An exact pattern such as `{ a }` matches only the member whose field set is exactly `{ a }`.
+- An open pattern such as `{ a, .. }` matches every member that has the field `a`. The field must have the same type in all the members it matches.
+- Branches are checked in order. A branch that is fully covered by earlier branches is an error, as with wildcard patterns elsewhere: `{ a, b }` may not follow `{ a, .. }`. The branches together must cover every member.
 
-```text
-{ not_found:   ({ path: String }) -> Never,
-  parse_error: ({ path: String, line: Int }) -> Never }
-```
-
-- Each raiser returns `Never`, so a raise can appear in any expression position.
-- Each error kind has its own exactly typed payload record. The raiser's name acts as the tag, so no tagged values exist as data. A payload whose fields are not fixed by anything else consists of the fields its handler uses (section 12.6).
-- **Handler branches define; label branches cover.** In a label `case`, the branches must cover the scrutinee's type. In a handler `case`, the branches *create* the capability's type: there is nothing to check for exhaustiveness, but using `$errs.foo` with no `foo(e)` branch is an error ("no handler for `foo`").
-- A branch such as `not_found(e)` resembles a constructor pattern, but Duetto has no tagged variants: it reads as "the `not_found` raiser was called with `e`." Once patterns exist, the payload may be destructured in place: `parse_error({ path, line }) -> ...`.
-
-### 8.3 Passing narrow capabilities
-
-Because records are exact, a function that can fail in only one way should receive a single raiser, as in `read_file(fs, path, $errs.not_found)`. This is the recommended style: each call shows exactly how it may fail, and specs extract a small exact type. When a function needs several raisers, it receives them individually, or as an open record (`{ not_found: ..., .. }`).
-
-### 8.4 Error translation
-
-A handler branch may call a raiser from an enclosing `try`, which rewraps errors across layers:
-
-```duetto
-parse_error(e) -> $app_errs.bad_config({ path: e.path, line: e.line, reason: "syntax" }),
-```
-
-### 8.5 Higher-order code
-
-Higher-order functions need no effect annotations. A callback that may fail captures a raiser; the function receiving it takes a `$`-parameter (section 9) and stays an ordinary parametric function.
-
-```duetto
-values = try $errs {
-  <<map(lines, line -> parse_int(line, $errs.bad_number))
-} case bad_number(e) -> [],
-```
-
-## 9. Second-class values: the `$` sigil
-
-Some values must not outlive the scope that created them. A raiser called after its `try` has returned would have nowhere to unwind to. Duetto marks such values with the `$` sigil and checks the restriction statically, so a developer sees at every use site that a value is special.
-
-### 9.1 Rules
-
-1. Only `$`-locals, `$`-parameters, and second-class records (section 9.5) can hold second-class values. `$`-names are introduced by `try`, by `$`-locals, and by `$`-parameters. Fields of an ordinary record can never hold them.
-2. **Second-class expressions** are exactly these:
-   - a `$`-name;
-   - a **path** rooted at one, such as `$errs.not_found` or `$h.config`, whatever the type of the projected field;
-   - a lambda that captures a `$`-name;
-   - a record literal with a second-class field (section 9.5);
-   - a block or label `case` whose result is a second-class expression.
-
-   Every other expression is first-class. In particular, **the result of a call is always first-class**, even when the callee is second-class: since rule 3 forbids returning second-class values, no call can produce one. So `map` can collect the results of `$f(x)`, and `$h -> $h.num(n)` may return the value of `$h.num(n)`.
-3. A second-class value can be called, projected, bound to another `$`-local, or passed to a `$`-parameter. It cannot be returned, stored in a field or list, bound to a plain name, or compared with `==`. The result of a `try` must be first-class, since the capabilities it introduces end with it.
-4. A first-class value may be passed to a `$`-parameter, or bound to a `$`-local, because both only promise that the value will not escape. Binding a first-class value to a `$`-local **demotes** it: from then on it is second-class.
-
-```duetto
-$nf = $errs.not_found,               -- allowed: second-class local
-nf = $errs.not_found,                -- error: second-class value bound to a plain name
-r = { on_missing: $errs.not_found }, -- error: a second-class record bound to a plain name
-$r = { on_missing: $errs.not_found }, -- allowed: a second-class record in a $-local
-```
-
-**Fields of second-class records.** A projection from a second-class record is second-class even when the field holds an ordinary value: `$h.config` is second-class whether or not `config` is a function. Types do not record which fields of a record are second-class (section 9.5), so the class of a path cannot depend on the field. A first-class value needed after the call should be passed as a separate argument. This keeps one rule for all paths, at the cost of the per-field precision discussed in section 4.8.
-
-### 9.2 `$`-parameters in higher-order code
-
-By rule 4, `map = (xs, $f) -> ...` accepts both ordinary functions and closures that capture raisers. Library authors should mark a function parameter with `$` whenever the function only calls it and never stores or returns it, which is the common case. In a signature, `$f` documents "this is only called."
-
-Spec extraction follows the same model: a spec that passes a second-class value to `map`, such as a capturing callback or a demoted function, establishes that `map`'s parameter is a `$`-parameter (section 12.4).
-
-### 9.3 Interaction with recipes
-
-Recipes are values catalogued from specs. Because second-class values cannot be stored or returned, no recipe can contain a capability. This rules out a value captured inside one spec's `try` being reused, with a dead raiser, by an unrelated spec.
-
-### 9.4 Payloads
-
-Payloads passed to raisers are first-class values, so they cannot contain `$` values. A capability can never escape its `try` through an error payload.
-
-### 9.5 Second-class records and `$` in function types
-
-**Second-class records.** A record literal with any second-class field is itself second-class. Like any second-class value, it may only be called into, projected, bound to a `$`-local, or passed to a `$`-parameter; it cannot be returned or stored. Every projection from it is second-class (section 9.1).
-
-```duetto
-result = e.match({
-  num: n -> check(n, $errs.too_big),   -- second-class branch
-  add: (l, r) -> ...,
-}),                                     -- allowed if match takes a $-parameter
-```
-
-**`$` in function types.** A function type may mark a parameter as second-class, so type aliases can express it:
-
-```text
-match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R
-```
-
-Without this, `$` would exist only on parameter names, and no alias could describe a function that accepts second-class arguments. Both handler encodings in section 13.4 depend on it.
+**Extraction.** How unions are formed from specs is described in section 12.4. Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types, which keeps extraction tractable. Unrestricted unions such as `Int | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
 
 ## 10. Interfaces, laws, and recipes
 
@@ -604,7 +529,7 @@ Reader: { read_text: (String) -> String },
 sort_by: (xs, ord) -> ...,
 ```
 
-This keeps authority and behavior explicit and works naturally with structural typing. Whether a record represents authority is a property of the runtime model, not a type-system marker. Failure capabilities (section 8) are the one exception: they are second-class.
+This keeps authority and behavior explicit and works naturally with structural typing. Whether a record represents authority is a property of the runtime model, not a type-system marker.
 
 ### 10.2 Shape versus behavior
 
@@ -636,9 +561,9 @@ spec config file yields ordering {
 }
 ```
 
-This spec can yield a recipe for `Ordering({ name: String })`, which law specs can then reuse, provided `load_ordering` reads the file while it builds the ordering. An ordering that keeps reading through `fs` would still reach the double, so it would not be catalogued (section 10.5). Recipes never contain second-class values (section 9.3).
+This spec can yield a recipe for `Ordering({ name: String })`, which law specs can then reuse, provided `load_ordering` reads the file while it builds the ordering. An ordering that keeps reading through `fs` would still reach the double, so it would not be catalogued (section 10.5).
 
-All three `ensure`s are needed. The ordering's results are labels in a result position, so they contain only the labels some spec observes (section 12.3). With `'lt` alone, `compare` would extract as returning only `'lt`, the implementation would fail its check, and as an `Ordering` it would fail reflexivity.
+All three `ensure`s are needed, in this one spec. The ordering's results are labels in a result position, so they contain only the labels one spec observes (section 12.3). With `'lt` alone, `compare` would extract as returning only `'lt`, the implementation would fail its check, and as an `Ordering` it would fail reflexivity.
 
 Coverage extends only to construction paths that some spec describes; it grows as specs become more generative.
 
@@ -646,7 +571,7 @@ Coverage extends only to construction paths that some spec describes; it grows a
 
 **What is catalogued.** Recipes exist to test production implementations (section 10.3). What matters is therefore where a value's **behavior** comes from, not who assembled it. A value is catalogued as a recipe exactly when all of these hold:
 
-1. **It is the value of a spec binding**, `x = e`. Values that are only passed along, as in `sort_by(xs, by_name())`, are not candidates, so a spec decides what it offers to the catalogue by naming it. `$`-locals are never candidates, since second-class values cannot be stored.
+1. **It is the value of a spec binding**, `x = e`. Values that are only passed along, as in `sort_by(xs, by_name())`, are not candidates, so a spec decides what it offers to the catalogue by naming it.
 2. **It is function-carrying.**
 3. **Its behavior comes only from production code.** Every closure reachable from the value, through record fields, list elements, and the captures of closures, has its lambda literal in production code. Function identity (section 5.1) already tracks each closure's lambda site and captures, so the runner can check this by walking the value. A closure written in a spec, including any double, makes the value a **fixture**.
 4. **Its type is concrete**: it contains no type variables and no opaque tokens (section 7.3). So binding a polymorphic field, as in `f = identity`, does not produce a recipe, while `add1 = make_adder(1)`, of type `(Int) -> Int`, does.
@@ -749,10 +674,9 @@ Doubles are a core language feature, not a library, because specs must be writab
 
 - A spec can construct a test value standing in for a dependency.
 - The double has an ordinary structural type, typically an exact record of functions.
-- The spec **stubs** responses for specific inputs. Entries are comma-separated, of two forms: `fn(args) returns expr`, and `fn(args) raises $r(payload)`.
-- In a stub's arguments, a first-class argument is a value, matched against the actual argument with `==`. A second-class argument is written as a `$`-name, such as `$nf`: it matches any value without comparing it, since `==` rejects second-class values, and binds it for the response. A parameter written as a `$`-name in any stub is a `$`-parameter of the double's function.
-- The response is evaluated **at call time**, in the caller's context, and may use the `$`-names its stub bound, but no other `$`-name: a response that mentions an outer `$`-name is a compile error, so a double never holds a capability and stays first-class.
-- `raises $r(payload)` calls the raiser `$r`, which must be a `$`-name bound by the same stub, and so unwinds to the caller's `try`. This is how a double exercises a failure path (section 11.1). The form is separate from `returns` because it fixes `$r`'s type as a raiser, `(P) -> Never` with `P` the payload's exact type (section 12.6). A `returns` response may also call a bound `$`-name, for example a callback passed to a higher-order function, but that call is typed as an ordinary call.
+- The spec **stubs** responses for specific inputs. Entries are comma-separated, of the form `fn(args) returns expr`. Arguments are matched against the actual arguments with `==`.
+- The response is evaluated **at call time**. A failing dependency is stubbed by returning a failure value, such as `{ not_found: { path: "a.cfg" } }` (section 11.1).
+- **The stubs of one function share its parameter types, and its result type is the join of their responses.** Responses of different shapes form a struct union (section 9): the double is the spec's own statement of what the dependency can return.
 - A call with an input that was not stubbed fails the spec.
 - Expected interactions are checked explicitly, with `calls` (section 11.2).
 
@@ -768,35 +692,29 @@ Statically, this double contributes `{ read_text: (String) -> String }`.
 
 ### 11.1 Testing failure paths
 
-A dependency can only fail if it is given a raiser (section 8), so a capability that may fail takes one per call, like any other function: `read_text: (String, $ ({ path: String }) -> Never) -> String`. A double for it binds the raiser in its stubs, and raises through it in the failing case:
+A dependency that can fail returns a struct union (section 8), so a double for it returns failure values from some stubs:
 
 ```duetto
-read_file: (fs, path, $nf) -> fs.read_text(path, $nf),
+read_file: (fs, path) -> case fs.read_text(path) {
+  { ok } -> { ok },
+  { not_found } -> { err: "missing: " ++ not_found.path },
+},
 
 spec read_file returns content or reports a missing file {
   fs = double {
-    read_text("ok.cfg", $nf) returns "content",
-    read_text("a.cfg", $nf) raises $nf({ path: "a.cfg" }),
+    read_text("ok.cfg") returns { ok: "content" },
+    read_text("a.cfg") returns { not_found: { path: "a.cfg" } },
   },
-  ok = try $errs {
-    <<read_file(fs, "ok.cfg", $errs.not_found)
-  } case not_found(e) -> "missing: " ++ e.path,
-  missing = try $errs {
-    <<read_file(fs, "a.cfg", $errs.not_found)
-  } case not_found(e) -> "missing: " ++ e.path,
-  ensure ok == "content",
-  ensure missing == "missing: a.cfg",
+  ensure read_file(fs, "ok.cfg") == { ok: "content" },
+  ensure read_file(fs, "a.cfg") == { err: "missing: a.cfg" },
 },
 ```
 
-Extracted: `read_file : ({ read_text: (String, $ ({ path: String }) -> Never) -> String }, String, $ ({ path: String }) -> Never) -> String`.
+Extracted: `read_file : ({ read_text: (String) -> { ok: String } | { not_found: { path: String } } }, String) -> { ok: String } | { err: String }`.
 
-- The spec supplies the real raiser, through its own `try`. `try` is pure, so it may be used in specs.
-- The double **holds no raiser**. It receives one for the duration of each call, so it stays first-class.
-- **One spec must cover both paths.** A signature comes from one fully constrained use, never from a combination of several specs (formal core, section 6.4). A spec with only the raising stub would not fix what `read_text` returns, and one with only the success stub would not fix the raiser's type. One double with both stubs fixes the whole type of `read_text`, since the stubs of one function share its parameter and result types (section 12.6).
-- The raiser's `-> Never` comes from two places: the double's `raises` stub fixes it for `read_text`'s parameter, and the `try` fixes it for `read_file`'s third parameter, since every raiser a `try` introduces returns `Never` (section 8.2).
-- The payload `{ path: String }` is exact on both sides. The stub's payload is a record literal, and the handlers' payload consists of the fields they use (section 12.6). The two must agree, or checking `read_file`'s body, which passes the one raiser where the other is expected, fails.
-- The spec establishes that `read_file`'s third parameter is a `$`-parameter (section 12.4).
+- The double's type comes from its stubs: `read_text`'s result is the join of its two responses.
+- `read_file`'s result is a union because this one spec observes both shapes (section 12.4). Further specs may observe only one of them.
+- **Both stubs belong in one double.** The double is a parameter of `read_file`, a negative position, where different shapes conflict. Two specs whose doubles each stubbed only one outcome would give `read_file` two different parameter types.
 
 ### 11.2 Checking interactions with `calls`
 
@@ -811,10 +729,10 @@ spec settings are read once {
 }
 ```
 
-**Shape of a recorded call.** Only first-class arguments are recorded: a second-class argument, such as a raiser, is dead once the call returns.
+**Shape of a recorded call.**
 
-- `calls(d.fn)`, for a function with exactly one first-class parameter, is the list of those arguments, as above.
-- `calls(d.fn, (x1, ..., xk) -> e)`, for any number of first-class parameters, passes each call's first-class arguments, in order, to the given function and lists the results. The spec chooses the names, for example `calls(log.write, (level, text) -> { level, text })`.
+- `calls(d.fn)`, for a function with exactly one parameter, is the list of its arguments, as above.
+- `calls(d.fn, (x1, ..., xk) -> e)`, for any number of parameters, passes each call's arguments, in order, to the given function and lists the results. The spec chooses the names, for example `calls(log.write, (level, text) -> { level, text })`.
 
 Function parameters have no names, so no field names are invented for them, and no tuple is needed (section 4.8).
 
@@ -856,42 +774,56 @@ This contributes `identity : (?A) -> A`, universally quantified over `A`. A spec
 
 **Combining uses.** Each use of a field in a spec yields a **usage type**, in which `?` variables are rigid. The extraction rule is:
 
-> **One use must be the most general.** The signature is one usage type with its `?` variables generalized, and every other use must be compatible with it. Label sets are the exception: they are joined across all uses (section 12.3). If no use qualifies, the specs conflict.
+> **One spec supplies the signature.** The signature is one usage type with its `?` variables generalized. Its label sets, the fields of its record results, and its unions are joined over the uses **in that one spec** (sections 12.3 and 12.4). Every other use, in that spec or in others, must be compatible with it: for labels, fields, and union members, that means they must already be included. If no use qualifies, the specs conflict.
 
 - `(?A) -> A` and `(Int) -> Int` give `(?X) -> X`: the concrete use is an instance of the generic one.
 - `(Int) -> Int` and `(String) -> String` conflict: neither is an instance of the other. "`f` is used at `Int` in spec P and at `String` in spec Q; did you mean `some(?A)`?"
 - `(?A, A) -> A` and `(Int, String) -> Int` conflict: the concrete use contradicts the relationship stated by the generic spec. Only a spec that states the more general contract, such as `(?A, ?B) -> A`, can relax it.
 - `(?A, Int) -> A` and `(Int, ?B) -> Int` conflict: each is generic in a different parameter, and no spec states the combined claim.
 
-The signature is therefore always exactly what one spec wrote, apart from label sets, and generalization happens only when a spec asks for it explicitly. After extraction, every spec is re-typed against the signatures, and the implementation is checked against them. The formal rules, including when an element type seen only as an empty list defaults to `Never`, are in the separate formal core document.
+The signature is therefore always exactly what one spec wrote, and generalization happens only when a spec asks for it explicitly. After extraction, every spec is re-typed against the signatures, and the implementation is checked against them. The formal rules, including when an element type seen only as an empty list defaults to `Never`, are in the separate formal core document.
 
 ### 12.3 Labels
 
-The set of labels a function accepts is the union of the labels its specs pass to it. Specs calling `f('true)` and `f('false)` give `f : ('true | 'false) -> ...`. Every accepted label then has at least one spec exercising it. `some(Bool)` covers the generative case.
+The set of labels a function accepts is the union of the labels **one spec** passes to it. A spec calling both `f('true)` and `f('false)` gives `f : ('true | 'false) -> ...`; other specs may then pass either label. `some(Bool)` covers the generative case. Every accepted label then has a spec exercising it, and one spec exercises the whole choice.
 
-The same holds for results: a function may return only labels that some spec **observes**, by comparing the result with it, or **handles**, in a `case` on the result. This is deliberate: every label of a public interface is exercised by some spec. It applies to every predicate, since `==` can produce both `'true` and `'false`: a predicate needs at least one spec observing each (section 14.6).
+The same holds for results: a function may return only labels that one spec **observes**, by comparing the result with it, or **handles**, in a `case` on the result. This is deliberate: every label of a public interface is exercised, and one spec sees them all. It applies to every predicate, since `==` can produce both `'true` and `'false`: a predicate needs a spec that observes both, which can be as short as `ensure [is_even(2), is_even(3)] == ['true, 'false]` (section 14.6). Specs that observe `'true` and `'false` separately, with no spec that observes both, conflict: "spec P observes `'true` and spec Q observes `'false` at the result of `is_even`; one spec must observe both."
 
-Record results follow the same principle: when a spec only projects fields from a result, the result's type consists of exactly the fields it observed (formal core, section 5.3), and an implementation that returns more fails its check.
+Record results follow the same principle: when a spec projects fields from a result, the result's type consists of exactly the fields that spec observed (section 12.4), and an implementation that returns more fails its check.
 
-It applies in the same way to **fields that return interface values**, such as a function returning an `Ordering`: the labels returned by the interface's functions are result labels too. A spec for such a field must observe or handle every label the interface returns, for example all three results of `compare` (section 10.4). Otherwise the extracted type has a smaller label set than the interface, and the value is checked against the interface's laws anyway, since it can be used as one (section 10.6). One spec with a `case` that handles every label is the most compact way to do this.
+It applies in the same way to **fields that return interface values**, such as a function returning an `Ordering`: the labels returned by the interface's functions are result labels too. One spec for such a field must observe or handle every label the interface returns, for example all three results of `compare` (section 10.4). Otherwise the extracted type has a smaller label set than the interface, and the value is checked against the interface's laws anyway, since it can be used as one (section 10.6). A `case` that handles every label is the most compact way to do this.
 
-This implicit joining is a **deliberate exception** to the principle that generalization must be explicit (section 12.2): labels are cheap, and a misspelled label is visible in the extracted type. Unions of records are never formed implicitly (section 13.4).
+Joining within one spec is not generalization: it adds no type variables. An earlier rule joined labels across all specs, as an exception to "a signature is what one spec wrote". It was dropped so that labels, record fields, and union members follow one rule (section 12.4).
 
-### 12.4 Second-class parameters
+### 12.4 Rows and unions
 
-A parameter is a `$`-parameter in the signature exactly when some spec passes it a second-class value. As with types, the signature comes from specs, not from the implementation.
+**Record results are joined within a spec.** A spec that projects fields from a result, such as `settings.theme`, observes only those fields. Each such use is open: it says the result has at least these fields. At a positive position, such as a result, the signature's record consists of the fields observed by the uses of **one spec**, and it is exact. If one of that spec's uses observes the whole record, for example by comparing it with a record literal, its other uses must observe a subset of those fields. Uses in other specs must observe a subset too. So these specs are accepted together:
 
-- **Establishing a `$`-parameter needs no raiser.** A spec can demote any value by binding it to a `$`-local (section 9.1), and pass that:
+```duetto
+spec settings have a theme {
+  settings = load_settings(fs, "a"),
+  ensure settings.theme == "dark",
+},
 
-  ```duetto
-  spec map can take a second-class function {
-    $times_two = x -> x * 2,
-    ensure map([1, 2], $times_two) == [2, 4],
-  },
-  ```
+spec settings are complete {
+  ensure load_settings(fs, "b") == { theme: "dark", size: 3 },
+},
+```
 
-- **A definition's `$` must agree with the signature.** A field definition may write `map: (xs, $f) -> ...` to document its intent, and its body is then checked against the `$`. If no spec establishes the `$`, the definition and the signature disagree, which is an error: "`map` declares `$f`, but no spec passes it a second-class value." Without this rule, callers could not pass second-class values to a parameter the implementation was written to accept them.
-- When a spec establishes a `$`-parameter that the definition does not mark, the body is still checked against the signature, so it must not let that value escape.
+and give the result type `{ theme: String, size: Int }`, taken from the second spec, which the first is included in. Likewise `ensure divmod(7, 2).div == 3` and `ensure divmod(7, 2).mod == 1`, in one spec, give `{ div: Int, mod: Int }`, whether or not the spec names the result. In two separate specs they conflict, since neither spec's fields include the other's. This is the record counterpart of the label rule of section 12.3: a result contains exactly what one spec observes, so an implementation that returns a field no spec observes fails its check. The formal core states it in its sections 6.2 and 6.4.
+
+At a negative position, such as a parameter, open uses stay wildcards, and different exact shapes in separate specs conflict: `greet({ name: "Ada" })` in one spec and `greet({ name: "Ada", age: 3 })` in another are reported.
+
+**When are unions formed? (decided)** Uses that see a value in different shapes, as in `parse_int("7") == { ok: 7 }` and `parse_int("x") == { err: { text: "x" } }`, form a union when they are **in one spec**, at any position, as labels do:
+
+- At a result, one spec observes every member shape, by comparing results with records of each shape, or by a `case` that handles each shape.
+- At a parameter, one spec passes every member shape, or states the union with `some`, written inline as in `some({ ok: String } | { err: String })` or through an alias such as `some(Result(String, String))`. One double whose stubs return different shapes also states a union (section 11).
+
+Other specs may then use single members, since a record is included in every union that contains its shape (section 9). Shapes seen only in separate specs, with no spec that sees them together, conflict. When forming a union, the uses of one shape are first combined by the record rules above, and a union that would contain an open member is a conflict.
+
+A mistaken shape within one spec, such as `greet({ name: "Ada" })` next to `greet({ name: "Ada", age: 3 })`, now forms a union instead of a conflict. It is still reported: an implementation that projects `p.name` fails its check, since unions have no projection (section 9), and one that handles both shapes is what that spec asked for.
+
+Three other rules were considered. Joining shapes across specs only at positive positions, and forming parameter unions only through `some`, kept parameters strict but needed two rules, one for labels and one for shapes. Forming unions **only explicitly**, through `some`, cannot express a union result, since `some` does not apply to results. Joining distinct shapes across specs **everywhere** would let one spec widen another's parameters silently, the mistake exact records exist to catch.
 
 ### 12.5 Checking pipeline
 
@@ -908,38 +840,16 @@ An implementation cannot strengthen its required input shape or change its retur
 
 Extracted signatures are printed in the same type syntax, including `?` for type variables, so they can serve as a human-readable interface description.
 
-### 12.6 Raisers and doubles in extraction
-
-Raisers and doubles take part in extraction like any other values, with these rules. They are outside the formal core's current fragment, and the `$` and `try` step must formalize them (formal core, section 9.3).
-
-1. **A raiser's result is `Never` by construction.** Every raiser a `try` introduces has type `(P) -> Never` (section 8.2). This is not the defaulting of the formal core's section 5.3, which applies only to empty lists: it is the raiser's declared type.
-2. **A raiser's payload is exact, and consists of the fields its handler uses.** `P` is the handler parameter's type, always a record, since a raiser takes a single payload record. If its row is still open after solving, as when a handler only projects `e.path`, it is closed to the fields used: `{ path: String }`. This is the general rule that open rows in positive positions are closed to the observed fields (formal core, section 5.3): a payload is passed to a raiser that is itself a parameter, so it is in a positive position. It matches section 8.2, where every payload is exactly typed, and it is the record counterpart of the label rule of section 12.3. In production code the payload is usually fixed by the signatures of the functions the raiser is passed to, so the row is rarely open. A handler that ignores its payload gives the payload `{}`.
-3. **A double's type is the type its stubs give it.** The stubs of one function share its parameter and result types. A `returns e` stub unifies the result with `e`'s type. A `raises $r(p)` stub types `$r` as `(τp) -> Never`, where `τp` is the exact type of the payload `p`, and places no constraint on the result. A parameter written as a `$`-name is a `$`-parameter.
-4. **Raisers and doubles follow the one-use rule.** A field's signature comes from one fully constrained use (section 12.2), so a spec that exercises a fallible capability should cover both its success and its failure in one double, as in section 11.1.
-
-Rule 2 makes a spec too narrow: a handler that uses only `path` gives the payload `{ path: String }`, so an implementation that raises `{ path, line }` fails its check, and a handler that ignores its payload gives `{}`, which no implementation that raises a real payload can satisfy. The payload type then comes from the wrong side: from what the spec's handler happens to read, not from what the implementation raises.
-
-**Proposal: polymorphic payloads.** A handler that reads only `path` accepts any payload with a `path`, so its raiser's honest type is `∀R. ({ path: String, ..R }) -> Never`. The proposal replaces rule 2 with these rules; it is scheduled with the `$` and `try` formal step (section 13.3), not with general rank-2 polymorphism (section 13.4).
-
-- **A handler is generalized like a lambda local.** After typing a handler branch, the free type and row variables of its payload that are not free in the environment are quantified, and the raiser it defines gets the quantified type. A handler that reads only `e.path` gives `∀R. ({ path: String, ..R }) -> Never`; one that ignores its payload gives `∀R. ({ ..R }) -> Never`.
-- **Only raisers may be polymorphic in this way.** A `$`-parameter's type may be a quantified raiser type, `∀… . (P) -> Never`, with the quantifier directly on the raiser. This is a narrow case of rank-2 polymorphism: raisers are second-class, so a polymorphic raiser is never stored, returned, or placed inside data. It only flows down into callees.
-- **Calling a polymorphic raiser instantiates it.** `$nf({ path: p, line: 3 })` instantiates `R := { line: Int }`. Passing it where a monomorphic raiser is expected, such as a double's `({ path: String, line: Int }) -> Never`, instantiates it the same way.
-- **Passing a raiser to a polymorphic `$`-parameter requires it to be at least as polymorphic.** A caller whose handler compares the payload with an exact record cannot pass its raiser to `read_file`, which may raise any extension of `{ path }`. This is correct, not a limitation: the handler would mishandle the extra fields.
-- **Extraction counts a quantified raiser type as fully constrained.** In section 11.1, `read_file` would get `$ ({ path: String, ..?R }) -> Never` for its third parameter, where `?R` is quantified over that parameter only.
-- **It is sound with `==`.** A handler that compares its payload with an exact record, `e == { path: "a" }`, fixes the payload's row while it is typed, so it is not generalized: its raiser is monomorphic, and cannot be passed where any extension may be raised (the previous rule). No comparison ever silently ignores hidden fields. Simply allowing extra fields in payloads would not have this property: the same comparison would quietly compare only `path`.
-
-General rank-2 polymorphism, when it arrives, subsumes this case.
-
 ## 13. Open questions and deferred areas
 
 ### 13.1 Open questions
 
-- **Choice data.** Tagged unions are deliberately not adopted while alternatives are explored. The plan is in section 13.4.
+- **Choice data.** Tagged unions are not adopted. Struct unions (section 9) take their place, and section 13.4 plans the rest.
 - **Evaluation cost.** Re-running specs for each newly catalogued type can grow quickly. The depth limit may need a companion cap on instantiations per consumer spec, or sampling.
 - **Division by zero** (section 6.6). The options:
-  1. **Total arithmetic**: `a / 0 = 0` and `a % 0 = a`, as in Lean and Pony. `/` stays an ordinary operator and needs no raiser, but a missing check silently gives a wrong number.
-  2. **Division takes a raiser**: `div(a, b, $zero)`. Honest, consistent with section 8, but `/` cannot be an infix operator, and arithmetic code fills with raisers.
-  3. **Both**: total `/` and `%`, plus raising functions `div` and `mod` in the standard library for code that must not divide by zero silently.
+  1. **Total arithmetic**: `a / 0 = 0` and `a % 0 = a`, as in Lean and Pony. `/` stays an ordinary operator, but a missing check silently gives a wrong number.
+  2. **Division returns a union**: `a / b : { ok: Int } | { div_by_zero: {} }`. Honest, consistent with section 8, but every arithmetic expression then needs a `case` or propagation.
+  3. **Both**: total `/` and `%`, plus functions `div` and `mod` in the standard library that return a union, for code that must not divide by zero silently.
 
   Recommendation: option 3. It keeps arithmetic readable and makes the checked form one call away. The same question applies to `Int` overflow, unless `Int` is arbitrary-precision, which is the recommendation there.
 - **Laws on structurally equal interfaces** (section 10.6). Laws follow structure, so `Max` and `Sum`, both `{ combine: (A, A) -> A }`, share laws, and a law that holds only for `Max`, such as idempotence, fails on every `Sum`. The options:
@@ -960,25 +870,19 @@ General rank-2 polymorphism, when it arrives, subsumes this case.
 
   Recommendation: option 1, so a module's interface is stable and can be read from the module alone.
 - **Root capabilities** (section 6.5). The runtime passes `main` exactly the fields its signature names, so the signature is decided. Not fixed: the entry point's name, the set of root capabilities the runtime can provide, and their types.
-- **Polymorphic payloads** (section 12.6). A raiser's payload currently consists of the fields its handler uses, so an implementation that raises more fields than a spec's handler reads fails its check. This is a real problem, not a matter of convenience: the payload type comes from what the spec's handler reads, not from what the implementation raises. The options:
-  1. **Exact payloads**, the current rule. Simple and consistent with exact records, but it ties a function's signature to what its specs' handlers happen to read.
-  2. **Polymorphic raisers**: a handler that reads only `path` accepts any payload with `path`, so its raiser has the type `∀R. ({ path: String, ..R }) -> Never`. This is what the handler actually accepts, and it is sound with `==`.
-  3. **Payloads from aliases**: a spec names the capability's type with an alias, and the alias fixes the payload. Precise, but it needs a way to ascribe a type to a double or a `try`, which specs do not have.
-
-  Recommendation: option 2, as proposed in section 12.6, scheduled with the `$` and `try` formal step rather than with general rank-2 polymorphism. Raisers are second-class and the quantifier is always directly on the raiser's type, so this needs only a narrow, checked form of rank-2: no polymorphic values are ever stored in data. A closed payload is an instance of the polymorphic one, so the move widens what is accepted and breaks no program. Until the step is done, option 1 holds.
+- **Handlers** (section 16). Whether and when to bring back `try`, handler `case`, and second-class values. They can be added without breaking programs that return unions, but they would give the language two idioms for failure.
 - **Label sets shared between field checks** (formal core, section 9.2).
-- **Overloaded `raise`.** A single overloaded raiser, with payloads told apart by a label field, would require intersection types and effectively reintroduce discriminated unions. Named raisers are the current design.
 - **Termination.** Reading `some` specs as proofs would require totality of the production functions involved, probably through an opt-in marker. Without it, the logical reading is partial correctness.
 - **Exact syntax** for imports, doubles, and comments.
 
 ### 13.2 Deferred
 
 - List deconstruction and pattern matching (planned)
-- Recursive type aliases (now required by the plan in section 13.4, for trees as `{ value: A, children: [Tree(A)] }`)
 - Mutable state
 - Exact generator semantics for all `some(T)` forms
 - Imports, and abstract types in modules. Abstract types will need a way to state whether `==` may see through them.
 - An exhaustive formal grammar and operational semantics
+- **Propagation sugar** (section 8), provisionally `e?`: the `ok` value of `e`, or else the nearest enclosing lambda returns `e`'s failure. Deferred until after the proof-of-concept compiler. Open then: which members count as failure (a fixed `ok` convention, or any union with an `ok` member), and how the enclosing function's result union is formed.
 
 ### 13.3 Formal core (priority)
 
@@ -986,99 +890,19 @@ The distinctive features interact closely, so a small formal core comes before f
 
 1. **Typing and generalization**, including the extraction rule (section 12.2). *Done*, in the separate formal core document, which also covers label subtyping and variance.
 2. **Row unification** for open records. *Done*, in the same document.
-3. **`$` escape checking**, together with the polymorphic payloads proposed in section 12.6.
+3. **Struct unions** (section 9), with recursive type aliases, union formation in extraction (section 12.4, decided), and `case` on shapes. This replaces the former `$` and `try` steps, which are deferred with handlers (section 16).
 4. **Initialization order** in structs (section 3.5).
-5. **Operational semantics of `try`** and unwinding.
 
-### 13.4 Choice data without tagged unions
+### 13.4 Choice data: the plan
 
-Tagged unions are a proven solution, which is exactly why alternatives are explored first. The plan is to introduce **both** of the forms below, paying their costs early, since most of those costs buy features needed anyway.
-
-#### Untagged unions of labels and records
-
-Exact records can be told apart by their field sets, so a union of exact records with different field sets is unambiguous. With width subtyping it would not be.
-
-```duetto
-Expr: { num: Int } | { add: { l: Expr, r: Expr } },
-Option(A): 'none | { some: A },
-Result(A, E): { ok: A } | { err: E },
-
-eval = e -> case e {
-  { num } -> num,
-  { add } -> eval(add.l) + eval(add.r),
-},
-```
-
-- A union may contain labels and exact records, as long as every member has a **distinct label or field set**, and **no member is a type variable**. The last condition preserves parametricity: code never tests whether a value is an `A`, only which known shape it has.
-- **Members are exact.** A member with an open row, such as `{ name: String, .. }`, would overlap every record with `name`, so it is forbidden.
-- **Distinctness is checked after expansion.** Member aliases are flattened first, as in `Option(A) | { y: Int }`, and recursive aliases are unfolded one level. A member that expands to a type variable is excluded.
-- Values are plain data: they print well, `some(Expr)` synthesizes them, and `==` works structurally.
-- **Projection on a union is an error** for now: `u.name` is rejected even if every member has `name`, since allowing it would amount to width subtyping. The value must go through `case`. This may be revisited.
-
-**Patterns.** A record pattern may be exact or open:
-
-- An exact pattern such as `{ a }` matches only the member whose field set is exactly `{ a }`.
-- An open pattern such as `{ a, .. }` matches every member that has the field `a`. The field must have the same type in all the members it matches.
-- Branches are checked in order. A branch that is fully covered by earlier branches is an error, as with wildcard patterns elsewhere: `{ a, b }` may not follow `{ a, .. }`. The branches together must cover every member.
-
-**Extraction.** Union formation, like generalization, must be **explicit**. A parameter gets a record union type only when a spec uses that union alias, for example through `some(Expr)` or a literal typed against `Expr`. Otherwise, uses with different record shapes are a conflict, as exact records require; specs calling `greet({ name: "Ada" })` and `greet({ name: "Ada", age: 3 })` are reported, not joined. Labels are the deliberate exception (section 12.3).
-
-When uses are combined, the order is fixed:
-
-1. Within each shape class, uses are combined by the most-general-use rule of section 12.2. An open use can be the most general one for the exact uses that have all of its fields: `{ num: 1 }` and `some({ num: Int, .. })` give `{ num: Int, .. }`.
-2. The classes are then joined into the declared union.
-3. A union that would contain an open member is a conflict.
-
-Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types, which keeps this tractable. Unrestricted unions such as `Int | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
-
-#### Handler-interface `case` sugar
-
-A value can carry its own dispatch: a `match` field taking a record of branches.
-
-```duetto
-Expr: { match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R },
-
-num = n -> { match: $h -> $h.num(n) },
-add = (l, r) -> { match: $h -> $h.add(l, r) },
-
-eval = e -> case e {
-  num(n) -> n,
-  add(l, r) -> eval(l) + eval(r),
-},
-```
-
-This **record encoding** desugars a handler `case` to calling the value's `match` field: `e.match({ num: n -> n, add: (l, r) -> ... })`. Exhaustiveness comes from exact records, and equality from function equality: `num(1) == num(1)` is `'true`. It suits values defined by behavior, such as streams or visitors.
-
-It requires **rank-2 polymorphism**, since `?R` in `match` must be quantified per call. It also requires **second-class records and `$` in function types** (section 9.5): if a branch calls a raiser, the branch closure is second-class, so the branch record is second-class and `match` must take it as a `$`-parameter. Rank-2 polymorphism alone does not address escape.
-
-**Dispatch is syntactic.** The kind of `case` is determined by its branch form, never by the scrutinee's type: `'lt ->` is a label `case`, `{ num } ->` is an untagged-union `case`, and `num(p) ->` is handler dispatch, through `match` or through a `try` (below). The meaning of a `case` never depends on types extracted from specs.
-
-#### The `try` encoding
-
-A value can instead be a **dispatcher** that receives a `$` record of raisers and calls exactly one:
-
-```duetto
-num = n -> $h -> $h.num({ n }),
-add = (l, r) -> $h -> $h.add({ l, r }),
-
-eval = e -> try $h { <<e($h) } case {
-  num(p) -> p.n,
-  add(p) -> eval(p.l) + eval(p.r),
-},
-```
-
-- **No rank-2 polymorphism.** The dispatcher returns `Never`, and the result arrives through the `try`, so there is no `?R` to quantify. A value's type is `($ { num: ({ n: Int }) -> Never, add: ({ l: Expr, r: Expr }) -> Never }) -> Never`.
-- **Branches may use `$` values.** Handler branches are the `try`'s own continuation code, not closures stored in a record, so they can freely use enclosing `$` values.
-- It requires **`$` in function types** (section 9.5).
-- Raisers take a single payload record, so branches are written `add(p)`. Writing `add(l, r)` would need sugar for destructuring the payload.
-- Each match unwinds once, which is a performance question for later, not a semantic one.
+Struct unions (section 9) are the language's form of choice data, in place of tagged unions. A second form, values that carry their own dispatch through a `match` field, was planned alongside them; it is deferred with handlers (section D13.4), since its useful variants depend on second-class values. The features below support struct unions.
 
 #### Supporting features
 
 Each of these pays off beyond choice data:
 
-- **Recursive type aliases**, required by both forms. They are **equi-recursive**: a type is its unfolding, with equality decided on regular trees. Recursion must be **contractive**, passing through a record, list, or function type; `T: T` and `T: T | 'x` are rejected.
-- **Rank-2 polymorphism**, required by the **record** encoding only, since `?R` in `match` must be quantified per call; the `try` encoding does not need it. It is also needed for abstract types in modules: a module exposing an abstract type with its operations is an existential, which rank-2 polymorphism encodes. The types come from declared aliases, so this is checking, not inference.
+- **Recursive type aliases**, required by struct unions such as `Expr`. They are **equi-recursive**: a type is its unfolding, with equality decided on regular trees. Recursion must be **contractive**, passing through a record, list, or function type; `T: T` and `T: T | 'x` are rejected.
+- **Rank-2 polymorphism**, needed for abstract types in modules and for the deferred handler-interface encodings (section D13.4): a module exposing an abstract type with its operations is an existential, which rank-2 polymorphism encodes. The types come from declared aliases, so this is checking, not inference.
 - **Printing functions** in failure messages, by lambda site and captures, matching `==`. The closure returned by `num(1)` prints as `num{ n: 1 }`, and a nested value as `add{ l: num{ n: 1 }, r: num{ n: 2 } }`.
 - **Constructor-based generation**, so that function-carrying data such as Scott-encoded trees can be generated randomly. Its rules follow below.
 
@@ -1088,25 +912,23 @@ Today's recipes are values built by specs, which give specific trees but not ran
 
 - **Selection.** Constructors are **explicitly designated**, never discovered. Treating every catalogued function returning `Expr` as a constructor would include operations under test, such as `simplify: (Expr) -> Expr`: a bug in `simplify` would skew every generated input and misattribute failures.
 - **Bounds.** Generation uses a **size** parameter that shrinks at each recursive constructor, independent of the depth limit, which bounds recipe depth (section 10.5). At least one designated constructor must be non-recursive (the grounding check of section 10.5), and selection is biased toward non-recursive constructors as the size runs out.
-- **Prerequisites.** Constructor arguments that are function-carrying need recipes, so generation for a type is available only from the round after those recipes exist. Constructors with `$`-parameters cannot be used.
-- **Constructor failures.** A constructor that raises or rejects its synthesized arguments, such as a range with `lo > hi`, **discards the candidate**. This counts as a generation failure attributed to the constructor, not a spec failure.
+- **Prerequisites.** Constructor arguments that are function-carrying need recipes, so generation for a type is available only from the round after those recipes exist.
+- **Constructor failures.** A constructor that returns a failure for its synthesized arguments, such as a range with `lo > hi`, **discards the candidate**. This counts as a generation failure attributed to the constructor, not a spec failure.
 - **Attribution.** A failing generated value is reported as its construction trace, such as `add{ l: num{ n: 1 }, r: num{ n: 2 } }`, and shrunk by trace. Failures that share a constructor are grouped under it, like recipes (section 10.8).
 - **Laws.** Generated values of an interface type go through all applicable law specs, like recipes (section 10.6).
 
 #### Order of work
 
 1. Recursive type aliases
-2. Untagged unions of labels and records, with explicit union formation in extraction
+2. Struct unions, with union formation within one spec in extraction (section 12.4)
 3. Function printing in failure messages
 4. Constructor-based generation, with designated constructors
-5. `$` in function types and second-class records
-6. The `try` encoding of handler interfaces, built on step 5
-7. Rank-2 polymorphism, together with abstract types in modules
-8. The record encoding of handler interfaces, built on steps 5 and 7
+5. Rank-2 polymorphism, together with abstract types in modules
+
+The handler-interface encodings, and handlers themselves, are deferred (section 16).
 
 #### Deliberate tradeoffs
 
-- Each match in the `try` encoding unwinds once; its cost is a performance question.
 - Implicit joining of labels is an intentional exception to explicit generalization (section 12.3).
 - Treatment of inconclusive runs (section 10.6) is project policy.
 - Function identity restricts the compiler: it may not merge lambda sites or drop captures (section 5.1).
@@ -1174,12 +996,13 @@ Extracted: `sort_by : ([Int], Ordering(Int)) -> [Int]`, from the second spec, wh
 ### 14.5 Failure handling
 
 ```duetto
-port = try $errs {
-  <<parse_int(text, $errs.bad_number)
-} case bad_number(e) -> 8080,
+port = case parse_int(text) {
+  { ok } -> ok,
+  { err } -> 8080,
+},
 ```
 
-Here `parse_int` receives a single raiser and cannot store it.
+Here `parse_int` returns `{ ok: Int } | { err: { text: String } }`, and the `case` must cover both members.
 
 ### 14.6 A private helper
 
@@ -1193,8 +1016,268 @@ spec names compare ignoring case {
 },
 ```
 
-`same_name` is a field, so its signature comes from the spec: `({ name: String }, { name: String }) -> 'true | 'false`. Both `ensure`s are needed. A result's label set contains only labels that some spec observes (section 12.3), and the body's `==` can produce both `'true` and `'false`, so a spec that only ever saw `'true` would make the implementation fail its check. `normalize` is a local: private, with an inferred type.
+`same_name` is a field, so its signature comes from the spec: `({ name: String }, { name: String }) -> 'true | 'false`. Both `ensure`s are needed, in one spec. A result's label set contains only labels that one spec observes (section 12.3), and the body's `==` can produce both `'true` and `'false`, so a spec that only ever saw `'true` would make the implementation fail its check. `normalize` is a local: private, with an inferred type.
 
 ## 15. Summary
 
-Duetto is a whole-program language in which specifications are executable code defining what production code may consume and produce, what it must do, and how values can be constructed for further conformance testing. A file is a module is a struct; data is exact records, lists, and labels; choice is expressed by label `case` or by calling closures; failure is a second-class capability passed explicitly; and equality is built in and total. The duet between spec and production code is the reason for the name.
+Duetto is a whole-program language in which specifications are executable code defining what production code may consume and produce, what it must do, and how values can be constructed for further conformance testing. A file is a module is a struct; data is exact records, lists, and labels; choice is expressed by `case` on labels and struct unions, or by calling closures; failure is data, returned in a struct union; and equality is built in and total. The duet between spec and production code is the reason for the name.
+
+## 16. Deferred: handlers and second-class values
+
+This appendix preserves the design of failure handlers (`try` with handler `case`), raisers, and second-class `$` values, which earlier revisions made part of the language. They were removed from the current design in favor of failure as data (section 8) and struct unions (section 9), because most of their complexity existed to handle failure without unions. They can be added back later without breaking programs that return unions.
+
+The text is kept as it stood when removed, with its sections renamed: former section 8 is D8, former 9 is D9, former 12.4 and 12.6 are D12.4 and D12.6, and the handler encodings of former section 13.4 are D13.4. The parts of former sections 3.5, 11 and 11.1 that concerned `$` and raisers are D3.5, D11 and D11.1. References inside the appendix use these names; references to other sections may describe rules that have since changed. Cases T1–T10 of the formal core's section 9.3 belong to this appendix.
+
+### D3.5 `$`-locals in recursive groups
+
+From former section 3.5: a `$`-local bound to a lambda literal, such as `$go = x -> ...`, belongs to the recursive group too, so a helper that uses a raiser can be recursive. A sibling that mentions it counts as capturing a `$`-name, so that sibling must also be a `$`-local (section D9.1). Mentioning a sibling counts as capturing it for this rule, although it does not count as a capture for function identity (section 5.1): identity only concerns first-class closures, while this rule keeps a first-class closure from holding a second-class one.
+
+### D8. Failure as a capability
+
+The ability to fail is an explicit value, like a filesystem handle. A function can abort only if it was given a raiser. There are no ambient exceptions.
+
+#### D8.1 Concepts
+
+1. `try` introduces a **failure capability**: a record of raisers, bound to a `$`-name. Its body is a block.
+2. A `case` directly after the `try` block lists the **handler branches**. Each branch defines **one raiser** of that record, together with the expression or block that runs when it is called.
+3. Calling a raiser **unwinds** to its `try` and runs the matching branch. The value of that branch becomes the value of the `try` expression; if no raiser is called, the value is the block's result.
+
+```duetto
+config = try $errs {
+  text = read_file(fs, path, $errs.not_found),
+  <<parse_config(text, path, $errs.parse_error)
+} case {
+  not_found(e) -> default_config(),
+  parse_error(e) -> log_and_default(log, e.path, e.line),
+}
+```
+
+Logging is authority too, so `log_and_default` receives a `log` capability explicitly, like `fs` (section 6.5).
+
+As with any `case`, the braces may be omitted when there is exactly one branch:
+
+```duetto
+port = try $errs {
+  <<parse_int(text, $errs.bad_number)
+} case bad_number(e) -> 8080,
+```
+
+There is no ambiguity with a label `case`. A label `case` has a scrutinee (`case r { ... }`), while a handler `case` follows a `try` block directly; since Duetto has no juxtaposition application, a `case` in that position can only be the handler clause. The branch shapes also differ: labels (`'lt -> ...`) versus raisers (`not_found(e) -> ...`).
+
+#### D8.2 Types
+
+In the example, `$errs` has the exact record type:
+
+```text
+{ not_found:   ({ path: String }) -> Never,
+  parse_error: ({ path: String, line: Int }) -> Never }
+```
+
+- Each raiser returns `Never`, so a raise can appear in any expression position.
+- Each error kind has its own exactly typed payload record. The raiser's name acts as the tag, so no tagged values exist as data. A payload whose fields are not fixed by anything else consists of the fields its handler uses (section D12.6).
+- **Handler branches define; label branches cover.** In a label `case`, the branches must cover the scrutinee's type. In a handler `case`, the branches *create* the capability's type: there is nothing to check for exhaustiveness, but using `$errs.foo` with no `foo(e)` branch is an error ("no handler for `foo`").
+- A branch such as `not_found(e)` resembles a constructor pattern, but Duetto has no tagged variants: it reads as "the `not_found` raiser was called with `e`." Once patterns exist, the payload may be destructured in place: `parse_error({ path, line }) -> ...`.
+
+#### D8.3 Passing narrow capabilities
+
+Because records are exact, a function that can fail in only one way should receive a single raiser, as in `read_file(fs, path, $errs.not_found)`. This is the recommended style: each call shows exactly how it may fail, and specs extract a small exact type. When a function needs several raisers, it receives them individually, or as an open record (`{ not_found: ..., .. }`).
+
+#### D8.4 Error translation
+
+A handler branch may call a raiser from an enclosing `try`, which rewraps errors across layers:
+
+```duetto
+parse_error(e) -> $app_errs.bad_config({ path: e.path, line: e.line, reason: "syntax" }),
+```
+
+#### D8.5 Higher-order code
+
+Higher-order functions need no effect annotations. A callback that may fail captures a raiser; the function receiving it takes a `$`-parameter (section D9) and stays an ordinary parametric function.
+
+```duetto
+values = try $errs {
+  <<map(lines, line -> parse_int(line, $errs.bad_number))
+} case bad_number(e) -> [],
+```
+
+### D9. Second-class values: the `$` sigil
+
+Some values must not outlive the scope that created them. A raiser called after its `try` has returned would have nowhere to unwind to. Duetto marks such values with the `$` sigil and checks the restriction statically, so a developer sees at every use site that a value is special.
+
+#### D9.1 Rules
+
+1. Only `$`-locals, `$`-parameters, and second-class records (section D9.5) can hold second-class values. `$`-names are introduced by `try`, by `$`-locals, and by `$`-parameters. Fields of an ordinary record can never hold them.
+2. **Second-class expressions** are exactly these:
+   - a `$`-name;
+   - a **path** rooted at one, such as `$errs.not_found` or `$h.config`, whatever the type of the projected field;
+   - a lambda that captures a `$`-name;
+   - a record literal with a second-class field (section D9.5);
+   - a block or label `case` whose result is a second-class expression.
+
+   Every other expression is first-class. In particular, **the result of a call is always first-class**, even when the callee is second-class: since rule 3 forbids returning second-class values, no call can produce one. So `map` can collect the results of `$f(x)`, and `$h -> $h.num(n)` may return the value of `$h.num(n)`.
+3. A second-class value can be called, projected, bound to another `$`-local, or passed to a `$`-parameter. It cannot be returned, stored in a field or list, bound to a plain name, or compared with `==`. The result of a `try` must be first-class, since the capabilities it introduces end with it.
+4. A first-class value may be passed to a `$`-parameter, or bound to a `$`-local, because both only promise that the value will not escape. Binding a first-class value to a `$`-local **demotes** it: from then on it is second-class.
+
+```duetto
+$nf = $errs.not_found,               -- allowed: second-class local
+nf = $errs.not_found,                -- error: second-class value bound to a plain name
+r = { on_missing: $errs.not_found }, -- error: a second-class record bound to a plain name
+$r = { on_missing: $errs.not_found }, -- allowed: a second-class record in a $-local
+```
+
+**Fields of second-class records.** A projection from a second-class record is second-class even when the field holds an ordinary value: `$h.config` is second-class whether or not `config` is a function. Types do not record which fields of a record are second-class (section D9.5), so the class of a path cannot depend on the field. A first-class value needed after the call should be passed as a separate argument. This keeps one rule for all paths, at the cost of the per-field precision discussed in section 4.8.
+
+#### D9.2 `$`-parameters in higher-order code
+
+By rule 4, `map = (xs, $f) -> ...` accepts both ordinary functions and closures that capture raisers. Library authors should mark a function parameter with `$` whenever the function only calls it and never stores or returns it, which is the common case. In a signature, `$f` documents "this is only called."
+
+Spec extraction follows the same model: a spec that passes a second-class value to `map`, such as a capturing callback or a demoted function, establishes that `map`'s parameter is a `$`-parameter (section D12.4).
+
+#### D9.3 Interaction with recipes
+
+Recipes are values catalogued from specs. Because second-class values cannot be stored or returned, no recipe can contain a capability. This rules out a value captured inside one spec's `try` being reused, with a dead raiser, by an unrelated spec.
+
+#### D9.4 Payloads
+
+Payloads passed to raisers are first-class values, so they cannot contain `$` values. A capability can never escape its `try` through an error payload.
+
+#### D9.5 Second-class records and `$` in function types
+
+**Second-class records.** A record literal with any second-class field is itself second-class. Like any second-class value, it may only be called into, projected, bound to a `$`-local, or passed to a `$`-parameter; it cannot be returned or stored. Every projection from it is second-class (section D9.1).
+
+```duetto
+result = e.match({
+  num: n -> check(n, $errs.too_big),   -- second-class branch
+  add: (l, r) -> ...,
+}),                                     -- allowed if match takes a $-parameter
+```
+
+**`$` in function types.** A function type may mark a parameter as second-class, so type aliases can express it:
+
+```text
+match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R
+```
+
+Without this, `$` would exist only on parameter names, and no alias could describe a function that accepts second-class arguments. Both handler encodings in section D13.4 depend on it.
+
+### D11. Doubles with raisers
+
+From former section 11, the stub rules that concerned second-class values:
+
+- The spec **stubs** responses for specific inputs. Entries are comma-separated, of two forms: `fn(args) returns expr`, and `fn(args) raises $r(payload)`.
+- In a stub's arguments, a first-class argument is a value, matched against the actual argument with `==`. A second-class argument is written as a `$`-name, such as `$nf`: it matches any value without comparing it, since `==` rejects second-class values, and binds it for the response. A parameter written as a `$`-name in any stub is a `$`-parameter of the double's function.
+- The response is evaluated **at call time**, in the caller's context, and may use the `$`-names its stub bound, but no other `$`-name: a response that mentions an outer `$`-name is a compile error, so a double never holds a capability and stays first-class.
+- `raises $r(payload)` calls the raiser `$r`, which must be a `$`-name bound by the same stub, and so unwinds to the caller's `try`. This is how a double exercises a failure path (section D11.1). The form is separate from `returns` because it fixes `$r`'s type as a raiser, `(P) -> Never` with `P` the payload's exact type (section D12.6). A `returns` response may also call a bound `$`-name, for example a callback passed to a higher-order function, but that call is typed as an ordinary call.
+- **Shape of a recorded call.** `calls` records only first-class arguments: a second-class argument, such as a raiser, is dead once the call returns.
+
+#### D11.1 Testing failure paths
+
+A dependency can only fail if it is given a raiser (section D8), so a capability that may fail takes one per call, like any other function: `read_text: (String, $ ({ path: String }) -> Never) -> String`. A double for it binds the raiser in its stubs, and raises through it in the failing case:
+
+```duetto
+read_file: (fs, path, $nf) -> fs.read_text(path, $nf),
+
+spec read_file returns content or reports a missing file {
+  fs = double {
+    read_text("ok.cfg", $nf) returns "content",
+    read_text("a.cfg", $nf) raises $nf({ path: "a.cfg" }),
+  },
+  ok = try $errs {
+    <<read_file(fs, "ok.cfg", $errs.not_found)
+  } case not_found(e) -> "missing: " ++ e.path,
+  missing = try $errs {
+    <<read_file(fs, "a.cfg", $errs.not_found)
+  } case not_found(e) -> "missing: " ++ e.path,
+  ensure ok == "content",
+  ensure missing == "missing: a.cfg",
+},
+```
+
+Extracted: `read_file : ({ read_text: (String, $ ({ path: String }) -> Never) -> String }, String, $ ({ path: String }) -> Never) -> String`.
+
+- The spec supplies the real raiser, through its own `try`. `try` is pure, so it may be used in specs.
+- The double **holds no raiser**. It receives one for the duration of each call, so it stays first-class.
+- **One spec must cover both paths.** A signature comes from one fully constrained use, never from a combination of several specs (formal core, section 6.4). A spec with only the raising stub would not fix what `read_text` returns, and one with only the success stub would not fix the raiser's type. One double with both stubs fixes the whole type of `read_text`, since the stubs of one function share its parameter and result types (section D12.6).
+- The raiser's `-> Never` comes from two places: the double's `raises` stub fixes it for `read_text`'s parameter, and the `try` fixes it for `read_file`'s third parameter, since every raiser a `try` introduces returns `Never` (section D8.2).
+- The payload `{ path: String }` is exact on both sides. The stub's payload is a record literal, and the handlers' payload consists of the fields they use (section D12.6). The two must agree, or checking `read_file`'s body, which passes the one raiser where the other is expected, fails.
+- The spec establishes that `read_file`'s third parameter is a `$`-parameter (section D12.4).
+
+### D12.4 Second-class parameters
+
+A parameter is a `$`-parameter in the signature exactly when some spec passes it a second-class value. As with types, the signature comes from specs, not from the implementation.
+
+- **Establishing a `$`-parameter needs no raiser.** A spec can demote any value by binding it to a `$`-local (section D9.1), and pass that:
+
+  ```duetto
+  spec map can take a second-class function {
+    $times_two = x -> x * 2,
+    ensure map([1, 2], $times_two) == [2, 4],
+  },
+  ```
+
+- **A definition's `$` must agree with the signature.** A field definition may write `map: (xs, $f) -> ...` to document its intent, and its body is then checked against the `$`. If no spec establishes the `$`, the definition and the signature disagree, which is an error: "`map` declares `$f`, but no spec passes it a second-class value." Without this rule, callers could not pass second-class values to a parameter the implementation was written to accept them.
+- When a spec establishes a `$`-parameter that the definition does not mark, the body is still checked against the signature, so it must not let that value escape.
+
+### D12.6 Raisers and doubles in extraction
+
+Raisers and doubles take part in extraction like any other values, with these rules. They are outside the formal core's current fragment, and the `$` and `try` step must formalize them (formal core, section 9.3).
+
+1. **A raiser's result is `Never` by construction.** Every raiser a `try` introduces has type `(P) -> Never` (section D8.2). This is not the defaulting of the formal core's section 5.3, which applies only to empty lists: it is the raiser's declared type.
+2. **A raiser's payload is exact, and consists of the fields its handler uses.** `P` is the handler parameter's type, always a record, since a raiser takes a single payload record. If its row is still open after solving, as when a handler only projects `e.path`, it is closed to the fields used: `{ path: String }`. This is the general rule that open rows in positive positions are closed to the observed fields (formal core, section 5.3): a payload is passed to a raiser that is itself a parameter, so it is in a positive position. It matches section D8.2, where every payload is exactly typed, and it is the record counterpart of the label rule of section 12.3. In production code the payload is usually fixed by the signatures of the functions the raiser is passed to, so the row is rarely open. A handler that ignores its payload gives the payload `{}`.
+3. **A double's type is the type its stubs give it.** The stubs of one function share its parameter and result types. A `returns e` stub unifies the result with `e`'s type. A `raises $r(p)` stub types `$r` as `(τp) -> Never`, where `τp` is the exact type of the payload `p`, and places no constraint on the result. A parameter written as a `$`-name is a `$`-parameter.
+4. **Raisers and doubles follow the one-use rule.** A field's signature comes from one fully constrained use (section 12.2), so a spec that exercises a fallible capability should cover both its success and its failure in one double, as in section D11.1.
+
+Rule 2 makes a spec too narrow: a handler that uses only `path` gives the payload `{ path: String }`, so an implementation that raises `{ path, line }` fails its check, and a handler that ignores its payload gives `{}`, which no implementation that raises a real payload can satisfy. The payload type then comes from the wrong side: from what the spec's handler happens to read, not from what the implementation raises.
+
+**Proposal: polymorphic payloads.** A handler that reads only `path` accepts any payload with a `path`, so its raiser's honest type is `∀R. ({ path: String, ..R }) -> Never`. The proposal replaces rule 2 with these rules; it is scheduled with the `$` and `try` formal step (section 13.3), not with general rank-2 polymorphism (section 13.4).
+
+- **A handler is generalized like a lambda local.** After typing a handler branch, the free type and row variables of its payload that are not free in the environment are quantified, and the raiser it defines gets the quantified type. A handler that reads only `e.path` gives `∀R. ({ path: String, ..R }) -> Never`; one that ignores its payload gives `∀R. ({ ..R }) -> Never`.
+- **Only raisers may be polymorphic in this way.** A `$`-parameter's type may be a quantified raiser type, `∀… . (P) -> Never`, with the quantifier directly on the raiser. This is a narrow case of rank-2 polymorphism: raisers are second-class, so a polymorphic raiser is never stored, returned, or placed inside data. It only flows down into callees.
+- **Calling a polymorphic raiser instantiates it.** `$nf({ path: p, line: 3 })` instantiates `R := { line: Int }`. Passing it where a monomorphic raiser is expected, such as a double's `({ path: String, line: Int }) -> Never`, instantiates it the same way.
+- **Passing a raiser to a polymorphic `$`-parameter requires it to be at least as polymorphic.** A caller whose handler compares the payload with an exact record cannot pass its raiser to `read_file`, which may raise any extension of `{ path }`. This is correct, not a limitation: the handler would mishandle the extra fields.
+- **Extraction counts a quantified raiser type as fully constrained.** In section D11.1, `read_file` would get `$ ({ path: String, ..?R }) -> Never` for its third parameter, where `?R` is quantified over that parameter only.
+- **It is sound with `==`.** A handler that compares its payload with an exact record, `e == { path: "a" }`, fixes the payload's row while it is typed, so it is not generalized: its raiser is monomorphic, and cannot be passed where any extension may be raised (the previous rule). No comparison ever silently ignores hidden fields. Simply allowing extra fields in payloads would not have this property: the same comparison would quietly compare only `path`.
+
+General rank-2 polymorphism, when it arrives, subsumes this case.
+
+### D13.4 Handler-interface `case` sugar
+
+A value can carry its own dispatch: a `match` field taking a record of branches.
+
+```duetto
+Expr: { match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R },
+
+num = n -> { match: $h -> $h.num(n) },
+add = (l, r) -> { match: $h -> $h.add(l, r) },
+
+eval = e -> case e {
+  num(n) -> n,
+  add(l, r) -> eval(l) + eval(r),
+},
+```
+
+This **record encoding** desugars a handler `case` to calling the value's `match` field: `e.match({ num: n -> n, add: (l, r) -> ... })`. Exhaustiveness comes from exact records, and equality from function equality: `num(1) == num(1)` is `'true`. It suits values defined by behavior, such as streams or visitors.
+
+It requires **rank-2 polymorphism**, since `?R` in `match` must be quantified per call. It also requires **second-class records and `$` in function types** (section D9.5): if a branch calls a raiser, the branch closure is second-class, so the branch record is second-class and `match` must take it as a `$`-parameter. Rank-2 polymorphism alone does not address escape.
+
+**Dispatch is syntactic.** The kind of `case` is determined by its branch form, never by the scrutinee's type: `'lt ->` is a label `case`, `{ num } ->` is an untagged-union `case`, and `num(p) ->` is handler dispatch, through `match` or through a `try` (below). The meaning of a `case` never depends on types extracted from specs.
+
+#### The `try` encoding (deferred)
+
+A value can instead be a **dispatcher** that receives a `$` record of raisers and calls exactly one:
+
+```duetto
+num = n -> $h -> $h.num({ n }),
+add = (l, r) -> $h -> $h.add({ l, r }),
+
+eval = e -> try $h { <<e($h) } case {
+  num(p) -> p.n,
+  add(p) -> eval(p.l) + eval(p.r),
+},
+```
+
+- **No rank-2 polymorphism.** The dispatcher returns `Never`, and the result arrives through the `try`, so there is no `?R` to quantify. A value's type is `($ { num: ({ n: Int }) -> Never, add: ({ l: Expr, r: Expr }) -> Never }) -> Never`.
+- **Branches may use `$` values.** Handler branches are the `try`'s own continuation code, not closures stored in a record, so they can freely use enclosing `$` values.
+- It requires **`$` in function types** (section D9.5).
+- Raisers take a single payload record, so branches are written `add(p)`. Writing `add(l, r)` would need sugar for destructuring the payload.
+- Each match unwinds once, which is a performance question for later, not a semantic one.
