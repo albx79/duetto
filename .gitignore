@@ -1,0 +1,36 @@
+# Python's virtual env, loved by claude
+.venv
+
+# DevBox cache and state
+.devbox
+
+# Dune build artifacts
+_build/
+
+# OCaml compiled artifacts
+*.cmi
+*.cmo
+*.cmx
+*.cmxa
+*.cmxs
+*.cma
+*.cmt
+*.cmti
+*.o
+*.a
+
+# OCaml toplevel
+*.cma
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# opam local switch
+_opam/

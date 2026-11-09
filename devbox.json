@@ -10,7 +10,12 @@
     "bash@latest",
     "coreutils@latest",
     "gnugrep@latest",
-    "which@latest"
+    "which@latest",
+    "ocaml@latest",
+    "ocamlPackages.menhir@latest",
+    "ocamlPackages.dune_3",
+    "ocamlPackages.ocaml-lsp@latest",
+    "ocamlPackages.ocamlformat@latest"
   ],
   "shell": {
     "init_hook": ["echo 'Welcome to devbox!' > /dev/null"],
