@@ -14,6 +14,6 @@ let () =
     let result = eval ast in
     Printf.printf "Result: %d\n" result
   with 
-  | Duetto.Lexer.Error error -> 
-      Printf.eprintf "Lexical error: %s\n" (Duetto.Lexer.string_of_error error);
+  | Duetto.Diagnostic.Error error -> 
+      Printf.eprintf "Lexical error: %s\n" (Duetto.Diagnostic.string_of_error error);
       exit 1      

@@ -1,21 +1,5 @@
 {
 open Parser
-
-type error = {
-  character: string;
-  line: int;
-  column: int;
-}
-
-exception Error of error
-
-let string_of_error error =
-  Printf.sprintf
-    "Unexpected character '%s' at %d:%d"
-    error.character
-    error.line
-    error.column
-
 }
 
 let digit = ['0'-'9']
@@ -45,10 +29,15 @@ rule token = parse
     let pos = Lexing.lexeme_start_p lexbuf in
     let column = pos.pos_cnum - pos.pos_bol + 1 in
     let character = Lexing.lexeme lexbuf in
-    raise (Error {
+    raise (Diagnostic.Error(
+      Diagnostic.Unexpected_character {
         character;
-        line = pos.pos_lnum;
-        column;
+        position = {
+          filename = pos.pos_fname;
+          line = pos.pos_lnum;
+          column;
+        };
       }
+    ) 
     )
   }
