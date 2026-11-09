@@ -10,8 +10,14 @@ let () =
 
   try
     let lexbuf = Lexing.from_channel stdin in
-    let ast = Duetto.Parser.main Duetto.Lexer.token lexbuf in
+    lexbuf.lex_curr_p <- {
+      lexbuf.lex_curr_p with
+      pos_fname = "<stdin>";
+    };
+    
+    let ast = Duetto.Parse.parse lexbuf in
     let result = eval ast in
+    
     Printf.printf "Result: %d\n" result
   with 
   | Duetto.Diagnostic.Error error -> 

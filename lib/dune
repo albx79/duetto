@@ -1,7 +1,9 @@
 (library
- (name duetto))
+ (name duetto)
+ (libraries menhirLib))
 
 (ocamllex lexer)
 
 (menhir
- (modules parser))
+ (modules parser)
+ (flags --table))
