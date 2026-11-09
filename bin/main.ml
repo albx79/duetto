@@ -17,7 +17,7 @@ let () =
     
     let ast = Duetto.Parse.parse lexbuf in
     let result = eval ast in
-    
+    Printf.printf "AST: %s\n" (Duetto.Ast.show_expr ast);
     Printf.printf "Result: %d\n" result
   with 
   | Duetto.Diagnostic.Error error -> 

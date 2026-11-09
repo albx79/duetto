@@ -1,6 +1,8 @@
 (library
  (name duetto)
- (libraries menhirLib))
+ (libraries menhirLib)
+ (preprocess
+   (pps ppx_deriving.show)))
 
 (ocamllex lexer)
 

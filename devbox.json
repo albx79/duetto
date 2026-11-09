@@ -15,7 +15,8 @@
     "ocamlPackages.menhir@latest",
     "ocamlPackages.dune_3",
     "ocamlPackages.ocaml-lsp@latest",
-    "ocamlPackages.ocamlformat@latest"
+    "ocamlPackages.ocamlformat@latest",
+    "ocamlPackages.ppx_deriving@latest"
   ],
   "shell": {
     "init_hook": ["echo 'Welcome to devbox!' > /dev/null"],
