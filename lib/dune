@@ -1,2 +1,7 @@
 (library
  (name duetto))
+
+(ocamllex lexer)
+
+(menhir
+ (modules parser))

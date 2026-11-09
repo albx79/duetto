@@ -1,11 +1,13 @@
 (lang dune 3.23)
 
+(using menhir 3.0)
+
 (name duetto)
 
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github albx79/duetto))
 
 (authors "Albx <albx79>")
 
