@@ -3,12 +3,22 @@ open Ast
 %}
 
 %token <int> INT
+%token <string> STRING
+%token <string> LABEL    (* 'name, without the quote *)
+%token <string> LIDENT   (* value names *)
+%token <string> UIDENT   (* type names *)
+%token <string> SPEC     (* spec keyword with its free-text title *)
+%token CASE SOME ENSURE
+%token ARROW EQEQ RESULT DOTDOT CONCAT
 %token PLUS
 %token MINUS
 %token TIMES
 %token DIV
+%token MOD
+%token EQUAL COLON COMMA DOT BAR QUESTION
 %token LPAREN
 %token RPAREN
+%token LBRACE RBRACE LBRACKET RBRACKET
 %token EOF
 
 %left PLUS MINUS

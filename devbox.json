@@ -11,18 +11,25 @@
     "coreutils@latest",
     "gnugrep@latest",
     "which@latest",
-    "ocaml@latest",
-    "ocamlPackages.menhir@latest",
-    "ocamlPackages.dune_3",
-    "ocamlPackages.ocaml-lsp@latest",
-    "ocamlPackages.ocamlformat@latest",
-    "ocamlPackages.ppx_deriving@latest"
+    "gnused@latest",
+    "gawk@latest",
+    "diffutils@latest",
+    "gnumake@latest",
+    "findutils@latest",
+    "gcc@latest",
+    "binutils@latest",
+    "gnutar@latest",
+    "gzip@latest",
+    "bzip2@latest",
+    "unzip@latest",
+    "gnupatch@latest",
+    "opam@latest"
   ],
   "shell": {
     "init_hook": ["echo 'Welcome to devbox!' > /dev/null"],
     "scripts": {
       "test":   ["echo \"Error: no test specified\" && exit 1"],
-      "claude": "set -eu; AGENT_HOME=\"$HOME/.local/share/agent-sandbox\"; mkdir -p \"$AGENT_HOME\"; chmod 700 \"$AGENT_HOME\"; exec bwrap --unshare-all --share-net --die-with-parent --new-session --bind \"$PWD\" \"$PWD\" --ro-bind /nix/store /nix/store --ro-bind \"$PWD/.devbox/nix/profile/default\" /nix-profile --dir /home --dir /home/agent --bind \"$AGENT_HOME\" /home/agent --dir /etc --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt --setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt --setenv NODE_EXTRA_CA_CERTS /etc/ssl/certs/ca-certificates.crt --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run --chdir \"$PWD\" --setenv HOME /home/agent --setenv TMPDIR /tmp --setenv PATH /nix-profile/bin claude"
+      "claude": "set -eu; AGENT_HOME=\"$HOME/.local/share/agent-sandbox\"; mkdir -p \"$AGENT_HOME\"; chmod 700 \"$AGENT_HOME\"; exec bwrap --unshare-all --share-net --die-with-parent --new-session --bind \"$PWD\" \"$PWD\" --ro-bind /nix/store /nix/store --ro-bind \"$PWD/.devbox/nix/profile/default\" /nix-profile --dir /home --dir /home/agent --bind \"$AGENT_HOME\" /home/agent --dir /bin --symlink /nix-profile/bin/bash /bin/sh --dir /etc --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt --setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt --setenv NODE_EXTRA_CA_CERTS /etc/ssl/certs/ca-certificates.crt --setenv OPAM_SWITCH_PREFIX \"$PWD/_opam\" --setenv OCAMLPATH \"$PWD/_opam/lib\" --setenv CAML_LD_LIBRARY_PATH \"$PWD/_opam/lib/stublibs:$PWD/_opam/lib/ocaml/stublibs:$PWD/_opam/lib/ocaml\" --setenv OCAML_TOPLEVEL_PATH \"$PWD/_opam/lib/toplevel\" --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run --chdir \"$PWD\" --setenv HOME /home/agent --setenv TMPDIR /tmp --setenv PATH \"$PWD/_opam/bin:/nix-profile/bin\" claude"
     }
   }
 }
