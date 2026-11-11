@@ -33,6 +33,19 @@ let () =
   check "projection" "person.name" (Proj (Ident "person", "name"));
   check "chained projection" "a.b.c"
     (Proj (Proj (Ident "a", "b"), "c"));
+  check "some simple type" "some(Int)"
+    (Some (Type_ident "Int"));
+  check "some type application" "some(Result(Int, String))"
+    (Some (Type_apply ("Result", [Type_ident "Int"; Type_ident "String"])));
+  check "some record type" "some({ name: String, age: Int })"
+    (Some (Type_record [
+      ("name", Type_ident "String");
+      ("age", Type_ident "Int");
+    ]));
+  check "some nested type" "some(Option({ value: Num }))"
+    (Some (Type_apply ("Option", [
+      Type_record [ ("value", Type_ident "Num") ];
+    ])));
   check "empty struct" "{}" (Struct []);
   check "simple struct" "{ answer: 42 }"
     (Struct [ Field ("answer", Num "42") ]);
@@ -62,5 +75,6 @@ let () =
   check_error "result must be last" "{ <<x, y = 1 }";
   check_error "result must be last with fields" "{ a: 1, <<a, b: 2 }";
   check_error "missing colon" "{ answer 42 }";
+  check_error "type fields require lowercase names" "some({ Name: Int })";
 
   if !failures > 0 then exit 1 else print_endline "parser tests passed"
