@@ -33,7 +33,7 @@ let skip_newlines lexbuf text =
 
 let digit = ['0'-'9']
 let exponent = ['e' 'E'] ['+' '-']? digit+
-let number = digit+ exponent?
+let number = digit+ ('.' digit+)? exponent?
 let lident_start = ['a'-'z' '_']
 let lident_char = ['a'-'z' '0'-'9' '_']
 let uident_start = ['A'-'Z']

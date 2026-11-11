@@ -86,6 +86,10 @@ let () =
       RBRACKET ];
   check "numeric exponent" "1e3 2E+4 5e-6"
     [ NUM "1e3"; NUM "2E+4"; NUM "5e-6" ];
+  check "decimal point" "3.14 0.5 1.5e-3"
+    [ NUM "3.14"; NUM "0.5"; NUM "1.5e-3" ];
+  check "range is not a decimal" "1..2"
+    [ NUM "1"; DOTDOT; NUM "2" ];
   check "big numeric literal" "99999999999999999999"
     [ NUM "99999999999999999999" ];
   check_error "unterminated string" "x = \"abc"

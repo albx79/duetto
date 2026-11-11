@@ -32,7 +32,7 @@ Specs serve three purposes at once:
 - `some(T)` synthesizes only **function-free** values; function-carrying values come from a **recipe catalogue**.
 - **Law specs** mark interfaces in backticks in their titles and bind each with exactly one `every(...)`.
 - Double expectations are explicit `ensure`s over **`calls`**; a spec names the arguments with a projection function when there are several.
-- **Operators are not overloaded**: `++` concatenates strings, `+` adds integers.
+- **Operators are not overloaded**: `++` concatenates strings, `+` adds numbers.
 - **One spec supplies the signature**: label sets, the fields of record results, and union members are joined only within one spec, and other specs must be included in it. Labels are no longer joined across specs (sections 12.2 to 12.4).
 - **A value is catalogued only if its behavior comes from production code**: it is bound in a spec, function-carrying, concrete, and every closure it reaches was written in production code. Values reaching a spec closure or a double are fixtures, so recipes never contain doubles. Recipes are limited by depth, not by rounds, and laws apply to every value usable as their interface.
 - **Law specs with no subject are vacuous**, and do not prevent a pass.
@@ -167,13 +167,13 @@ f_res is used before it is initialized:
 
 ### 3.6 Spec entries
 
-A spec entry is `spec`, a title, and a struct. The title is part of the grammar, not a string literal: free text up to the opening `{`, so it cannot contain braces. Names in backticks are identifiers that mark a law (section 10.9).
+A spec entry is `spec`, a title, and a struct. The title is part of the grammar, not a string literal: free text up to the opening `{`, so it cannot contain braces. Like everything else, it is not sensitive to newlines: a title may span lines, and its surrounding whitespace is trimmed. Names in backticks are identifiers that mark a law (section 10.9).
 
 ### 3.7 Comments
 
 A line comment starts with `#` and continues to the end of the line.
 
-The tokens `#[`, `]#`, and `#_` are reserved for future use.
+The tokens `#!`, `#[`, `]#`, and `#_` are reserved for future use.
 
 ### 3.8 Type entries
 
@@ -183,12 +183,12 @@ There is no `type` keyword. **An entry whose name starts with an uppercase lette
 Bool: 'true | 'false,                                # public type
 OrderingResult: 'lt | 'eq | 'gt,
 Ordering(A): { compare: (A, A) -> OrderingResult },
-Pair = { first: Int, second: Int },                  # private type
+Pair = { first: Num, second: Num },                  # private type
 ```
 
 - Parameters at the head of an entry, as in `Ordering(A): ...`, can only mean a type constructor, since values have no `name(params)` form.
 - Punning works for types: `{ Bool }` re-exports a type from elsewhere.
-- Value names must start with a lowercase letter.
+- **Naming.** Value names, including field names and labels after the `'`, are snake_case: a lowercase letter or `_`, then lowercase letters, digits and `_`, as in `read_file` and `'not_found`. Type names are PascalCase: an uppercase letter, then letters and digits, with no `_`, as in `OrderingResult`. Other spellings, such as `readFile` or `Ordering_Result`, are lexical errors.
 
 **Type members are transparent and static.** Because a file is a struct and structs are first-class records, public types are members of a record type. For now they are transparent aliases: `m.Bool` is another name for `'true | 'false`, so no dependent typing is needed. Type members exist only at compile time and do not take part in a record's runtime value, its exactness, or `==`. Abstract types, where a type member would become genuinely dependent, are deferred (section 13.2).
 
@@ -196,7 +196,7 @@ Pair = { first: Int, second: Int },                  # private type
 
 ### 4.1 Core type forms
 
-- `Int` and `String`
+- `Num` and `String`. `Num` is the only number type: an **exact rational number** of any size, as in Scheme, Common Lisp, Julia's `Rational` or Haskell's `Rational`. Arithmetic never rounds and never overflows, so `(1 / 3) * 3 == 1`. Number literals are decimal, with an optional fractional part and exponent, as in `42`, `3.14`, `15e-3` and `2E6`; a literal denotes the exact value it writes, and an exponent implies nothing about floating point. Examples in this draft use whole numbers.
 - label singleton types such as `'true`, `'lt`, `'missing`
 - unions of labels, such as `'lt | 'eq | 'gt`
 - list types `[T]`
@@ -216,13 +216,13 @@ Ordering(A): { compare: (A, A) -> OrderingResult },
 
 Labels are primitive atomic values and singleton types. Duetto has no primitive `Bool`; booleans are the alias `'true | 'false`.
 
-Unions may contain labels and exact records with distinct field sets: these are struct unions (section 9). A union such as `Int | String` is not allowed. Consuming a label union is done by matching on the label (section 6.3), which is ordinary value inspection, not type inspection. A singleton label type is a subtype of any union containing it.
+Unions may contain labels and exact records with distinct field sets: these are struct unions (section 9). A union such as `Num | String` is not allowed. Consuming a label union is done by matching on the label (section 6.3), which is ordinary value inspection, not type inspection. A singleton label type is a subtype of any union containing it.
 
 There are no tagged constructors. Data that would conventionally be a tagged union is a struct union, whose members are told apart by their field sets (section 9).
 
 ### 4.3 Exact records
 
-Records are structural and **exact**: `{ name: String }` is the type of records with exactly the field `name`, and no other. There is no width subtyping. A value of type `{ name: String, age: Int }` cannot be passed where `{ name: String }` is expected; the caller must project the needed fields, or the callee must accept an open record.
+Records are structural and **exact**: `{ name: String }` is the type of records with exactly the field `name`, and no other. There is no width subtyping. A value of type `{ name: String, age: Num }` cannot be passed where `{ name: String }` is expected; the caller must project the needed fields, or the callee must accept an open record.
 
 ### 4.4 Row polymorphism
 
@@ -258,7 +258,7 @@ ys = some([Key]),
 
 - In a spec, the scope of a type variable is the enclosing spec. In an extracted signature, it is the whole signature: signatures are prenex.
 - Type alias parameters, as in `Ordering(A): ...`, are already in binding position and need no `?`.
-- In a type alias, a `?` variable that is not a parameter is quantified **per call**: at the smallest function type that contains all its occurrences. In `match: ({ num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R`, that is the type of `match`, so each call of `match` chooses its own `R`. This needs rank-2 polymorphism (section 13.4), and the rule is provisional until that step.
+- In a type alias, a `?` variable that is not a parameter is quantified **per call**: at the smallest function type that contains all its occurrences. In `match: ({ num: (Num) -> ?R, add: (Expr, Expr) -> R }) -> R`, that is the type of `match`, so each call of `match` chooses its own `R`. This needs rank-2 polymorphism (section 13.4), and the rule is provisional until that step.
 - A bare name that does not resolve to a type is an error. A typo such as `Strng` is reported, instead of silently becoming a fresh type variable.
 
 Since production code has no type annotations, `?` appears only in specs, extracted signatures, and type aliases.
@@ -283,7 +283,7 @@ This decision will be revisited if handlers are permanently dropped, or if a lig
 
 | Value kind | Equality rule |
 | --- | --- |
-| `Int`, `String`, labels | equal values |
+| `Num`, `String`, labels | equal values |
 | Lists | same length and pairwise equal elements |
 | Records | same fields and pairwise equal field values |
 | Functions | same lambda literal and equal captured values (section 5.1) |
@@ -339,7 +339,7 @@ Everything that is not a spec entry is production code. Definitions need no type
 greet: person -> "Hello, " ++ person.name,
 ```
 
-Operators have exactly one type each: `+` adds `Int`s and `++` concatenates `String`s. Overloading one operator for both would need its meaning to depend on its operands' types, which is type-directed dispatch (section 6.2).
+Operators have exactly one type each: `+` adds `Num`s and `++` concatenates `String`s. Overloading one operator for both would need its meaning to depend on its operands' types, which is type-directed dispatch (section 6.2).
 
 ### 6.1 Closures
 
@@ -397,9 +397,8 @@ The entry point's name, the set of root capabilities, and their types are not ye
 A primitive that cannot produce a result for some arguments needs a defined meaning, since there are no ambient aborts: failure must be returned as data (section 8). The cases known so far:
 
 - **Division and remainder by zero**, `a / 0` and `a % 0`.
-- **Integer overflow**, if `Int` is bounded.
 - **Access by position**, such as the first element of an empty list or a character past the end of a string. None of these exists yet: lists are consumed through `fold` and similar total primitives (section 4.5).
-- **Parsing**, as in `parse_int`, already returns a union (section 8).
+- **Parsing**, as in `parse_num`, already returns a union (section 8).
 
 Division is an open question (section 13.1). Non-termination is not failure but divergence, and is discussed under termination (section 13.1).
 
@@ -428,7 +427,7 @@ ensure ord.compare(a, b) == 'lt,
 Type and row variables are introduced with `?` at their first occurrence (section 4.7).
 
 ```duetto
-x = some(Int),
+x = some(Num),
 xs = some([?A]),
 p = some({ name: String, .. }),
 ```
@@ -438,7 +437,7 @@ p = some({ name: String, .. }),
 A type variable in a spec has one of two dynamic meanings, decided statically by where it occurs:
 
 - **Opaque**, the default. `some(?A)` generates **opaque tokens**: values that support only `==`, and that belong to no other type. The spec runs as one instantiation, at the token type. Because Duetto has no type-directed dispatch (section 6.2), production code cannot inspect these values.
-- **Anchored**, when the variable also occurs inside a function-carrying `some(...)` or `every(...)`, as `A` does in `ord = some(Ordering(?A))`. Values of such a type must come from the recipe catalogue, and no recipe has the token type, so the variable is instead instantiated with the type argument of each catalogued recipe: the spec runs once per `Ordering` recipe, with `A := Foo`, `A := Int`, and so on, and its `some(A)` produces values of that concrete type. When several variables are anchored, the spec runs once per compatible combination of recipes.
+- **Anchored**, when the variable also occurs inside a function-carrying `some(...)` or `every(...)`, as `A` does in `ord = some(Ordering(?A))`. Values of such a type must come from the recipe catalogue, and no recipe has the token type, so the variable is instead instantiated with the type argument of each catalogued recipe: the spec runs once per `Ordering` recipe, with `A := Foo`, `A := Num`, and so on, and its `some(A)` produces values of that concrete type. When several variables are anchored, the spec runs once per compatible combination of recipes.
 
 Both meanings agree statically: during extraction every `?` variable is rigid (section 12.2), whichever way it is run. Only the cost differs. An opaque spec runs once; an anchored spec runs once per recipe, or per combination, which is what consumer caps (section 10.5) limit.
 
@@ -446,11 +445,11 @@ The guarantee is **parametricity up to equality**. Every Duetto type supports `=
 
 ### 7.4 What `some` can synthesize
 
-`some(T)` synthesizes values only for **function-free** types: `Int`, `String`, labels and label unions, and lists and records built from those. Type variables are opaque tokens or anchored, as section 7.3 describes.
+`some(T)` synthesizes values only for **function-free** types: `Num`, `String`, labels and label unions, and lists and records built from those. Type variables are opaque tokens or anchored, as section 7.3 describes.
 
-A type that contains a function anywhere, transitively, cannot be synthesized. This includes `(Int) -> Int`, `[(Int) -> Int]`, `Ordering(Int)`, and `{ name: String, compare: ... }`. For these, `some(T)` draws a whole value from the **recipe catalogue** (section 10.5), using every admitted recipe that can be used as a `T`. Data fields are never synthesized separately from function fields, since that could break invariants between them.
+A type that contains a function anywhere, transitively, cannot be synthesized. This includes `(Num) -> Num`, `[(Num) -> Num]`, `Ordering(Num)`, and `{ name: String, compare: ... }`. For these, `some(T)` draws a whole value from the **recipe catalogue** (section 10.5), using every admitted recipe that can be used as a `T`. Data fields are never synthesized separately from function fields, since that could break invariants between them.
 
-If no spec could ever construct a recipe for `T`, the compiler reports it: "no spec constructs an `Ordering(Int)`." If one could, but no recipe was admitted in a particular run, the spec is reported as not run, and the run cannot pass (section 10.6). The standard library ships recipes for common cases, such as the natural orderings on `Int` and `String`.
+If no spec could ever construct a recipe for `T`, the compiler reports it: "no spec constructs an `Ordering(Num)`." If one could, but no recipe was admitted in a particular run, the spec is reported as not run, and the run cannot pass (section 10.6). The standard library ships recipes for common cases, such as the natural orderings on `Num` and `String`.
 
 `some` has one meaning everywhere. A law spec checking an ordering and a sorting spec relying on one both draw from the same catalogue, and recipe-derived values are presumed good.
 
@@ -469,19 +468,19 @@ A computation that can fail returns a value that says so: a **struct union** (se
 ```duetto
 Result(A, E): { ok: A } | { err: E },
 
-port = case parse_int(text) {
+port = case parse_num(text) {
   { ok } -> ok,
   { err } -> 8080,
 },
 ```
 
-Here `parse_int` returns `{ ok: Int } | { err: { text: String } }`. The name `Result` and the field names `ok` and `err` are a library convention, not keywords: any struct union with distinct field sets works the same way, and a function with several kinds of failure can return `{ ok: Config } | { not_found: { path: String } } | { parse_error: { path: String, line: Int } }`.
+Here `parse_num` returns `{ ok: Num } | { err: { text: String } }`. The name `Result` and the field names `ok` and `err` are a library convention, not keywords: any struct union with distinct field sets works the same way, and a function with several kinds of failure can return `{ ok: Config } | { not_found: { path: String } } | { parse_error: { path: String, line: Num } }`.
 
 - **Failure is visible in the type.** A caller cannot use the result without a `case` that covers every member (section 9), so an unhandled failure is a type error.
 - **Failure values are plain data.** They print in failure messages, `some` can generate them, `==` compares them, and recipes and laws need no special cases.
 - **Explicit authority is unchanged.** Capabilities such as file systems remain explicit values (section 6.5). A capability that can fail returns a union, like any other function.
 - **Error translation** is an ordinary `case`: `{ err } -> { err: { path: p, reason: "syntax" } }`.
-- **One spec observes both outcomes.** A spec that sees both `parse_int("7") == { ok: 7 }` and `parse_int("x") == { err: { text: "x" } }` gives `parse_int` its union result (section 12.4). Other specs may then test single outcomes.
+- **One spec observes both outcomes.** A spec that sees both `parse_num("7") == { ok: 7 }` and `parse_num("x") == { err: { text: "x" } }` gives `parse_num` its union result (section 12.4). Other specs may then test single outcomes.
 
 **Propagation.** Without further sugar, every fallible call needs a `case`, even when the caller only passes the failure on. A propagation form, provisionally written `e?`, would mean "the `ok` value of `e`, or else the enclosing function returns `e`'s failure unchanged". It can be defined without types, since the members it distinguishes are visible by shape. It is deferred (section 13.2): the proof-of-concept compiler is written without it.
 
@@ -492,7 +491,7 @@ Here `parse_int` returns `{ ok: Int } | { err: { text: String } }`. The name `Re
 A **struct union** is a union of exact records with distinct field sets, possibly together with labels. Exact records can be told apart by their field sets, so such a union is unambiguous; with width subtyping it would not be. There are no tagged constructors: a member's field set is its tag.
 
 ```duetto
-Expr: { num: Int } | { add: { l: Expr, r: Expr } },
+Expr: { num: Num } | { add: { l: Expr, r: Expr } },
 Option(A): 'none | { some: A },
 Result(A, E): { ok: A } | { err: E },
 
@@ -504,10 +503,10 @@ eval = e -> case e {
 
 - A union may contain labels and exact records, as long as every member has a **distinct label or field set**, and **no member is a type variable**. The last condition preserves parametricity: code never tests whether a value is an `A`, only which known shape it has.
 - **Members are exact.** A member with an open row, such as `{ name: String, .. }`, would overlap every record with `name`, so it is forbidden.
-- **Distinctness is checked after expansion.** Member aliases are flattened first, as in `Option(A) | { y: Int }`, and recursive aliases are unfolded one level. A member that expands to a type variable is excluded. Recursive aliases such as `Expr` are needed, so they move from deferred to required (section 13.2).
+- **Distinctness is checked after expansion.** Member aliases are flattened first, as in `Option(A) | { y: Num }`, and recursive aliases are unfolded one level. A member that expands to a type variable is excluded. Recursive aliases such as `Expr` are needed, so they move from deferred to required (section 13.2).
 - Values are plain data: they print well, `some(Expr)` synthesizes them, and `==` works structurally.
 - **Projection on a union is an error** for now: `u.name` is rejected even if every member has `name`, since allowing it would amount to width subtyping. The value must go through `case`. This may be revisited.
-- **A record is included in every union that contains its shape**, as a label is included in every label set that contains it. So `{ ok: 1 }` can be returned where `{ ok: Int } | { err: String }` is expected, and the branches of a `case` may produce different members of one union.
+- **A record is included in every union that contains its shape**, as a label is included in every label set that contains it. So `{ ok: 1 }` can be returned where `{ ok: Num } | { err: String }` is expected, and the branches of a `case` may produce different members of one union.
 - **Dispatch on shape is not type-directed dispatch.** A `case` inspects which known shape a value has, as a label `case` inspects which label it is (section 6.2). The kind of `case` is determined by its branch patterns, never by the scrutinee's type.
 
 **Patterns.** A record pattern may be exact or open:
@@ -516,7 +515,7 @@ eval = e -> case e {
 - An open pattern such as `{ a, .. }` matches every member that has the field `a`. The field must have the same type in all the members it matches.
 - Branches are checked in order. A branch that is fully covered by earlier branches is an error, as with wildcard patterns elsewhere: `{ a, b }` may not follow `{ a, .. }`. The branches together must cover every member.
 
-**Extraction.** How unions are formed from specs is described in section 12.4. Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types, which keeps extraction tractable. Unrestricted unions such as `Int | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
+**Extraction.** How unions are formed from specs is described in section 12.4. Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types, which keeps extraction tractable. Unrestricted unions such as `Num | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
 
 ## 10. Interfaces, laws, and recipes
 
@@ -576,7 +575,7 @@ Coverage extends only to construction paths that some spec describes; it grows a
 1. **It is the value of a spec binding**, `x = e`. Values that are only passed along, as in `sort_by(xs, by_name())`, are not candidates, so a spec decides what it offers to the catalogue by naming it.
 2. **It is function-carrying.**
 3. **Its behavior comes only from production code.** Every closure reachable from the value, through record fields, list elements, and the captures of closures, has its lambda literal in production code. Function identity (section 5.1) already tracks each closure's lambda site and captures, so the runner can check this by walking the value. A closure written in a spec, including any double, makes the value a **fixture**.
-4. **Its type is concrete**: it contains no type variables and no opaque tokens (section 7.3). So binding a polymorphic field, as in `f = identity`, does not produce a recipe, while `add1 = make_adder(1)`, of type `(Int) -> Int`, does.
+4. **Its type is concrete**: it contains no type variables and no opaque tokens (section 7.3). So binding a polymorphic field, as in `f = identity`, does not produce a recipe, while `add1 = make_adder(1)`, of type `(Num) -> Num`, does.
 5. **The spec passed.**
 
 Consequences:
@@ -596,7 +595,7 @@ Specs run in rounds until a fixed point:
 4. Admission stops when a round admits no new recipe within the **depth limit**.
 5. A final pass then runs every law obligation of every admitted recipe that has not run yet (section 10.6). Values that specs bind during the final pass are **not admitted**, since admission has stopped, so the final pass creates no new obligations and terminates.
 
-**The depth limit** bounds a recipe's **depth**, not the number of rounds. A recipe built by a spec that drew no recipes has depth 0; one built by a spec that drew recipes has depth one more than the deepest of them. Recursive constructions such as `lexicographic(ord)`, producing an `Ordering([A])` from an `Ordering(A)`, generate an unbounded family: `Ordering([Int])`, `Ordering([[Int]])`, and so on. The limit stops **admission** only. Recipes beyond it are never admitted, so nothing ever uses them and they create no obligations, while laws still run on everything admitted. Reaching the limit is therefore normal, and does not by itself make a run inconclusive. Since admission is monotonic and bounded by depth, the rounds terminate. A cap on instantiations per consumer spec may also be needed to control cost; caps never apply to law specs (section 10.6).
+**The depth limit** bounds a recipe's **depth**, not the number of rounds. A recipe built by a spec that drew no recipes has depth 0; one built by a spec that drew recipes has depth one more than the deepest of them. Recursive constructions such as `lexicographic(ord)`, producing an `Ordering([A])` from an `Ordering(A)`, generate an unbounded family: `Ordering([Num])`, `Ordering([[Num]])`, and so on. The limit stops **admission** only. Recipes beyond it are never admitted, so nothing ever uses them and they create no obligations, while laws still run on everything admitted. Reaching the limit is therefore normal, and does not by itself make a run inconclusive. Since admission is monotonic and bounded by depth, the rounds terminate. A cap on instantiations per consumer spec may also be needed to control cost; caps never apply to law specs (section 10.6).
 
 The same spec may therefore run several times, with different concrete types, at different points.
 
@@ -635,7 +634,7 @@ Green means pass. How a project treats an inconclusive run, for example in CI, i
 
 **No recipe contains a double.** A double is written in a spec, so a value that can still reach one is a fixture and is never catalogued (section 10.5). A recipe may still have been **built** with a double: `load_ordering(fs_double, ...)` can read its configuration through the double while it constructs the ordering, and the result is catalogued if the ordering itself no longer refers to `fs`.
 
-This rules out a problem that would otherwise arise. Suppose `f = make_lookup(store)`, where `store = double { get("a") returns 1 }`, and `f` calls `store` whenever it is invoked. If `f` were catalogued as a `(String) -> Int`, another spec's `some((String) -> Int)` would call it with a generated string, and the double would have no answer. That spec, and the spec that built `f`, are both correct, so neither should fail, and whether the problem appeared would depend on generated inputs. Not cataloguing values that can reach a double avoids this, with no need for recipes to be invalidated after admission. What is lost is law checking of such values. Their behavior depends on a test script, though, so laws would be testing the script rather than an implementation.
+This rules out a problem that would otherwise arise. Suppose `f = make_lookup(store)`, where `store = double { get("a") returns 1 }`, and `f` calls `store` whenever it is invoked. If `f` were catalogued as a `(String) -> Num`, another spec's `some((String) -> Num)` would call it with a generated string, and the double would have no answer. That spec, and the spec that built `f`, are both correct, so neither should fail, and whether the problem appeared would depend on generated inputs. Not cataloguing values that can reach a double avoids this, with no need for recipes to be invalidated after admission. What is lost is law checking of such values. Their behavior depends on a test script, though, so laws would be testing the script rather than an implementation.
 
 ### 10.8 Failure reporting
 
@@ -778,10 +777,10 @@ This contributes `identity : (?A) -> A`, universally quantified over `A`. A spec
 
 > **One spec supplies the signature.** The signature is one usage type with its `?` variables generalized. Its label sets, the fields of its record results, and its unions are joined over the uses **in that one spec** (sections 12.3 and 12.4). Every other use, in that spec or in others, must be compatible with it: for labels, fields, and union members, that means they must already be included. If no use qualifies, the specs conflict.
 
-- `(?A) -> A` and `(Int) -> Int` give `(?X) -> X`: the concrete use is an instance of the generic one.
-- `(Int) -> Int` and `(String) -> String` conflict: neither is an instance of the other. "`f` is used at `Int` in spec P and at `String` in spec Q; did you mean `some(?A)`?"
-- `(?A, A) -> A` and `(Int, String) -> Int` conflict: the concrete use contradicts the relationship stated by the generic spec. Only a spec that states the more general contract, such as `(?A, ?B) -> A`, can relax it.
-- `(?A, Int) -> A` and `(Int, ?B) -> Int` conflict: each is generic in a different parameter, and no spec states the combined claim.
+- `(?A) -> A` and `(Num) -> Num` give `(?X) -> X`: the concrete use is an instance of the generic one.
+- `(Num) -> Num` and `(String) -> String` conflict: neither is an instance of the other. "`f` is used at `Num` in spec P and at `String` in spec Q; did you mean `some(?A)`?"
+- `(?A, A) -> A` and `(Num, String) -> Num` conflict: the concrete use contradicts the relationship stated by the generic spec. Only a spec that states the more general contract, such as `(?A, ?B) -> A`, can relax it.
+- `(?A, Num) -> A` and `(Num, ?B) -> Num` conflict: each is generic in a different parameter, and no spec states the combined claim.
 
 The signature is therefore always exactly what one spec wrote, and generalization happens only when a spec asks for it explicitly. After extraction, every spec is re-typed against the signatures, and the implementation is checked against them. The formal rules, including when an element type seen only as an empty list defaults to `Never`, are in the separate formal core document.
 
@@ -812,11 +811,11 @@ spec settings are complete {
 },
 ```
 
-and give the result type `{ theme: String, size: Int }`, taken from the second spec, which the first is included in. Likewise `ensure divmod(7, 2).div == 3` and `ensure divmod(7, 2).mod == 1`, in one spec, give `{ div: Int, mod: Int }`, whether or not the spec names the result. In two separate specs they conflict, since neither spec's fields include the other's. This is the record counterpart of the label rule of section 12.3: a result contains exactly what one spec observes, so an implementation that returns a field no spec observes fails its check. The formal core states it in its sections 6.2 and 6.4.
+and give the result type `{ theme: String, size: Num }`, taken from the second spec, which the first is included in. Likewise `ensure divmod(7, 2).div == 3` and `ensure divmod(7, 2).mod == 1`, in one spec, give `{ div: Num, mod: Num }`, whether or not the spec names the result. In two separate specs they conflict, since neither spec's fields include the other's. This is the record counterpart of the label rule of section 12.3: a result contains exactly what one spec observes, so an implementation that returns a field no spec observes fails its check. The formal core states it in its sections 6.2 and 6.4.
 
 At a negative position, such as a parameter, open uses stay wildcards, and different exact shapes in separate specs conflict: `greet({ name: "Ada" })` in one spec and `greet({ name: "Ada", age: 3 })` in another are reported.
 
-**When are unions formed? (decided)** Uses that see a value in different shapes, as in `parse_int("7") == { ok: 7 }` and `parse_int("x") == { err: { text: "x" } }`, form a union when they are **in one spec**, at any position, as labels do:
+**When are unions formed? (decided)** Uses that see a value in different shapes, as in `parse_num("7") == { ok: 7 }` and `parse_num("x") == { err: { text: "x" } }`, form a union when they are **in one spec**, at any position, as labels do:
 
 - At a result, one spec observes every member shape, by comparing results with records of each shape, or by a `case` that handles each shape.
 - At a parameter, one spec passes every member shape, or states the union with `some`, written inline as in `some({ ok: String } | { err: String })` or through an alias such as `some(Result(String, String))`. One double whose stubs return different shapes also states a union (section 11).
@@ -850,10 +849,12 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 - **Evaluation cost.** Re-running specs for each newly catalogued type can grow quickly. The depth limit may need a companion cap on instantiations per consumer spec, or sampling.
 - **Division by zero** (section 6.6). The options:
   1. **Total arithmetic**: `a / 0 = 0` and `a % 0 = a`, as in Lean and Pony. `/` stays an ordinary operator, but a missing check silently gives a wrong number.
-  2. **Division returns a union**: `a / b : { ok: Int } | { div_by_zero: {} }`. Honest, consistent with section 8, but every arithmetic expression then needs a `case` or propagation.
+  2. **Division returns a union**: `a / b : { ok: Num } | { div_by_zero: {} }`. Honest, consistent with section 8, but every arithmetic expression then needs a `case` or propagation.
   3. **Both**: total `/` and `%`, plus functions `div` and `mod` in the standard library that return a union, for code that must not divide by zero silently.
 
-  Recommendation: option 3. It keeps arithmetic readable and makes the checked form one call away. The same question applies to `Int` overflow, unless `Int` is arbitrary-precision, which is the recommendation there.
+  Recommendation: option 3. It keeps arithmetic readable and makes the checked form one call away. `Num` is an exact rational (section 4.1), so overflow does not arise.
+- **Remainder on fractions.** `%` on numbers that are not whole needs a definition. The options: **floored**, `a % b = a - b * floor(a / b)`, whose result has the sign of `b`, as in Python and Haskell's `mod`; **truncated**, whose result has the sign of `a`, as in C and Java; or `%` **only on whole numbers**, which needs a whole-number check that the type system cannot express. Recommendation: floored, since it makes `a % b` lie in `[0, b)` for positive `b`, which is what modular code expects.
+- **Showing numbers.** A value such as `1 / 3` has no finite decimal expansion, so converting a `Num` to text needs a rule: a fraction such as `1/3`, a repeating decimal such as `0.(3)`, or rounding to a requested number of digits. This is a library question, not a language one.
 - **Laws on structurally equal interfaces** (section 10.6). Laws follow structure, so `Max` and `Sum`, both `{ combine: (A, A) -> A }`, share laws, and a law that holds only for `Max`, such as idempotence, fails on every `Sum`. The options:
   1. **Structural discipline**: interfaces with different laws must differ in structure, for example `{ max: ... }` and `{ sum: ... }`. No new construct, but generic code over every such interface needs a common field name, which this rules out.
   2. **Nominal interfaces**: a form that makes an alias a distinct type, so laws attach to its name. Precise, but it is a new construct, and it brings nominal typing into a structural language.
@@ -981,8 +982,8 @@ Extracted: `identity : (?A) -> A`.
 sort_by: (xs, ord) -> ...,
 
 spec sorting preserves length {
-  xs = some([Int]),
-  ord = some(Ordering(Int)),
+  xs = some([Num]),
+  ord = some(Ordering(Num)),
   ys = sort_by(xs, ord),
   ensure length(ys) == length(xs),
 },
@@ -993,18 +994,18 @@ spec sorting puts numbers in order {
 },
 ```
 
-Extracted: `sort_by : ([Int], Ordering(Int)) -> [Int]`, from the second spec, which is the most general fully constrained use. The first spec alone would not be enough: it passes the result only to `length`, so the result's elements are unconstrained, and extraction would report "the most general use of `sort_by` does not constrain its result" rather than guess. Here `int_compare` stands for a standard library comparison on `Int`; the name is provisional.
+Extracted: `sort_by : ([Num], Ordering(Num)) -> [Num]`, from the second spec, which is the most general fully constrained use. The first spec alone would not be enough: it passes the result only to `length`, so the result's elements are unconstrained, and extraction would report "the most general use of `sort_by` does not constrain its result" rather than guess. Here `int_compare` stands for a standard library comparison on `Num`; the name is provisional.
 
 ### 14.5 Failure handling
 
 ```duetto
-port = case parse_int(text) {
+port = case parse_num(text) {
   { ok } -> ok,
   { err } -> 8080,
 },
 ```
 
-Here `parse_int` returns `{ ok: Int } | { err: { text: String } }`, and the `case` must cover both members.
+Here `parse_num` returns `{ ok: Num } | { err: { text: String } }`, and the `case` must cover both members.
 
 ### 14.6 A private helper
 
@@ -1060,7 +1061,7 @@ As with any `case`, the braces may be omitted when there is exactly one branch:
 
 ```duetto
 port = try $errs {
-  <<parse_int(text, $errs.bad_number)
+  <<parse_num(text, $errs.bad_number)
 } case bad_number(e) -> 8080,
 ```
 
@@ -1072,7 +1073,7 @@ In the example, `$errs` has the exact record type:
 
 ```text
 { not_found:   ({ path: String }) -> Never,
-  parse_error: ({ path: String, line: Int }) -> Never }
+  parse_error: ({ path: String, line: Num }) -> Never }
 ```
 
 - Each raiser returns `Never`, so a raise can appear in any expression position.
@@ -1098,7 +1099,7 @@ Higher-order functions need no effect annotations. A callback that may fail capt
 
 ```duetto
 values = try $errs {
-  <<map(lines, line -> parse_int(line, $errs.bad_number))
+  <<map(lines, line -> parse_num(line, $errs.bad_number))
 } case bad_number(e) -> [],
 ```
 
@@ -1157,7 +1158,7 @@ result = e.match({
 **`$` in function types.** A function type may mark a parameter as second-class, so type aliases can express it:
 
 ```text
-match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R
+match: ($ { num: (Num) -> ?R, add: (Expr, Expr) -> R }) -> R
 ```
 
 Without this, `$` would exist only on parameter names, and no alias could describe a function that accepts second-class arguments. Both handler encodings in section D13.4 depend on it.
@@ -1235,7 +1236,7 @@ Rule 2 makes a spec too narrow: a handler that uses only `path` gives the payloa
 
 - **A handler is generalized like a lambda local.** After typing a handler branch, the free type and row variables of its payload that are not free in the environment are quantified, and the raiser it defines gets the quantified type. A handler that reads only `e.path` gives `∀R. ({ path: String, ..R }) -> Never`; one that ignores its payload gives `∀R. ({ ..R }) -> Never`.
 - **Only raisers may be polymorphic in this way.** A `$`-parameter's type may be a quantified raiser type, `∀… . (P) -> Never`, with the quantifier directly on the raiser. This is a narrow case of rank-2 polymorphism: raisers are second-class, so a polymorphic raiser is never stored, returned, or placed inside data. It only flows down into callees.
-- **Calling a polymorphic raiser instantiates it.** `$nf({ path: p, line: 3 })` instantiates `R := { line: Int }`. Passing it where a monomorphic raiser is expected, such as a double's `({ path: String, line: Int }) -> Never`, instantiates it the same way.
+- **Calling a polymorphic raiser instantiates it.** `$nf({ path: p, line: 3 })` instantiates `R := { line: Num }`. Passing it where a monomorphic raiser is expected, such as a double's `({ path: String, line: Num }) -> Never`, instantiates it the same way.
 - **Passing a raiser to a polymorphic `$`-parameter requires it to be at least as polymorphic.** A caller whose handler compares the payload with an exact record cannot pass its raiser to `read_file`, which may raise any extension of `{ path }`. This is correct, not a limitation: the handler would mishandle the extra fields.
 - **Extraction counts a quantified raiser type as fully constrained.** In section D11.1, `read_file` would get `$ ({ path: String, ..?R }) -> Never` for its third parameter, where `?R` is quantified over that parameter only.
 - **It is sound with `==`.** A handler that compares its payload with an exact record, `e == { path: "a" }`, fixes the payload's row while it is typed, so it is not generalized: its raiser is monomorphic, and cannot be passed where any extension may be raised (the previous rule). No comparison ever silently ignores hidden fields. Simply allowing extra fields in payloads would not have this property: the same comparison would quietly compare only `path`.
@@ -1247,7 +1248,7 @@ General rank-2 polymorphism, when it arrives, subsumes this case.
 A value can carry its own dispatch: a `match` field taking a record of branches.
 
 ```duetto
-Expr: { match: ($ { num: (Int) -> ?R, add: (Expr, Expr) -> R }) -> R },
+Expr: { match: ($ { num: (Num) -> ?R, add: (Expr, Expr) -> R }) -> R },
 
 num = n -> { match: $h -> $h.num(n) },
 add = (l, r) -> { match: $h -> $h.add(l, r) },
@@ -1278,7 +1279,7 @@ eval = e -> try $h { <<e($h) } case {
 },
 ```
 
-- **No rank-2 polymorphism.** The dispatcher returns `Never`, and the result arrives through the `try`, so there is no `?R` to quantify. A value's type is `($ { num: ({ n: Int }) -> Never, add: ({ l: Expr, r: Expr }) -> Never }) -> Never`.
+- **No rank-2 polymorphism.** The dispatcher returns `Never`, and the result arrives through the `try`, so there is no `?R` to quantify. A value's type is `($ { num: ({ n: Num }) -> Never, add: ({ l: Expr, r: Expr }) -> Never }) -> Never`.
 - **Branches may use `$` values.** Handler branches are the `try`'s own continuation code, not closures stored in a record, so they can freely use enclosing `$` values.
 - It requires **`$` in function types** (section D9.5).
 - Raisers take a single payload record, so branches are written `add(p)`. Writing `add(l, r)` would need sugar for destructuring the payload.
