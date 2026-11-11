@@ -42,7 +42,13 @@ rule token = parse
       Lexing.new_line lexbuf;
       token lexbuf
     }
-  | "--" [^ '\n']* { token lexbuf }
+  | "#!" | "#[" | "]#" | "#_" as token{
+        error (Diagnostic.Reserved_token {
+          token;
+          position = position_of (Lexing.lexeme_start_p lexbuf);
+        })
+      }
+  | "#" [^ '\n']* { token lexbuf }
 
   (* A spec title is free text up to the opening brace (spec, section 3.6). *)
   | "spec" ([' ' '\t' '\r' '\n'] [^ '{']* as title) {

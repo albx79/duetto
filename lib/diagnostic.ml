@@ -27,6 +27,10 @@ type error =
   | Unexpected_end_of_input of {
       position: position;
     }
+  | Reserved_token of {
+      token: string;
+      position: position;
+    }
 
 exception Error of error
 
@@ -60,3 +64,8 @@ let string_of_error = function
   | Unexpected_end_of_input { position } ->
       Printf.sprintf "Unexpected end of input at %s"
         (string_of_position position)
+
+  | Reserved_token { token; position } ->
+      Printf.sprintf "The token '%s' at %s is reserved for future use"
+        token (string_of_position position)
+

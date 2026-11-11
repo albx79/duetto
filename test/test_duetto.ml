@@ -62,7 +62,7 @@ let () =
   check "operators" "-> == = << .. . ++ + - * / % : | ?"
     [ ARROW; EQEQ; EQUAL; RESULT; DOTDOT; DOT; CONCAT; PLUS; MINUS;
       TIMES; DIV; MOD; COLON; BAR; QUESTION ];
-  check "comments" "x -- a comment\ny" [ LIDENT "x"; LIDENT "y" ];
+  check "comments" "x # a comment\ny" [ LIDENT "x"; LIDENT "y" ];
   check "spec title" "spec the answer is 42 {\n  ensure x == 42,\n}"
     [ SPEC "the answer is 42"; LBRACE; ENSURE; LIDENT "x"; EQEQ; INT 42;
       COMMA; RBRACE ];
@@ -84,10 +84,10 @@ let () =
     "Unterminated string literal starting at :1:5";
   check_error "invalid escape" {|"a\qb"|}
     "Invalid escape sequence '\\q' at :1:3";
-  check_error "unexpected character" "x\n  #"
-    "Unexpected character '#' at :2:3";
-  check_error "line after multi-line title" "spec a\nb\n{ }\n  #"
-    "Unexpected character '#' at :4:3";
+  check_error "unexpected character" "x\n  @"
+    "Unexpected character '@' at :2:3";
+  check_error "line after multi-line title" "spec a\nb\n{ }\n  !"
+    "Unexpected character '!' at :4:3";
   check_error "integer out of range" "99999999999999999999"
     "Integer literal 99999999999999999999 is out of range at :1:1";
   if !failures > 0 then exit 1 else print_endline "lexer tests passed"
