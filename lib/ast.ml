@@ -1,5 +1,5 @@
 type expr =
-  | Int of int
+  | Num of string
   | Add of expr * expr
   | Sub of expr * expr
   | Mul of expr * expr

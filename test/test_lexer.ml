@@ -1,7 +1,7 @@
 open Duetto.Parser
 
 let show = function
-  | INT n -> Printf.sprintf "INT %d" n
+  | NUM n -> Printf.sprintf "NUM %S" n
   | STRING s -> Printf.sprintf "STRING %S" s
   | LABEL l -> "LABEL " ^ l
   | LIDENT x -> "LIDENT " ^ x
@@ -54,7 +54,7 @@ let check_error name src expected =
 
 let () =
   check "literals" {|42 "Hello, Ada" 'true|}
-    [ INT 42; STRING "Hello, Ada"; LABEL "true" ];
+    [ NUM "42"; STRING "Hello, Ada"; LABEL "true" ];
   check "string escapes" {|"a\"b\\c\nd\te"|} [ STRING "a\"b\\c\nd\te" ];
   check "names and keywords" "x some_thing case some ensure Int Ordering"
     [ LIDENT "x"; LIDENT "some_thing"; CASE; SOME; ENSURE;
@@ -64,7 +64,7 @@ let () =
       TIMES; DIV; MOD; COLON; BAR; QUESTION ];
   check "comments" "x # a comment\ny" [ LIDENT "x"; LIDENT "y" ];
   check "spec title" "spec the answer is 42 {\n  ensure x == 42,\n}"
-    [ SPEC "the answer is 42"; LBRACE; ENSURE; LIDENT "x"; EQEQ; INT 42;
+    [ SPEC "the answer is 42"; LBRACE; ENSURE; LIDENT "x"; EQEQ; NUM "42";
       COMMA; RBRACE ];
   check "spec without title" "spec{}" [ SPEC ""; LBRACE; RBRACE ];
   check "spec prefix is an identifier" "specs" [ LIDENT "specs" ];
@@ -72,14 +72,18 @@ let () =
     [ SOME; LPAREN; LBRACE; LIDENT "name"; COLON; UIDENT "String"; COMMA;
       DOTDOT; QUESTION; UIDENT "R"; RBRACE; RPAREN ];
   check "case" "case x { 'a -> 1, 'b -> 2 }"
-    [ CASE; LIDENT "x"; LBRACE; LABEL "a"; ARROW; INT 1; COMMA;
-      LABEL "b"; ARROW; INT 2; RBRACE ];
+    [ CASE; LIDENT "x"; LBRACE; LABEL "a"; ARROW; NUM "1"; COMMA;
+      LABEL "b"; ARROW; NUM "2"; RBRACE ];
   check "block" "{ tmp = f(x), <<tmp + 1 }"
     [ LBRACE; LIDENT "tmp"; EQUAL; LIDENT "f"; LPAREN; LIDENT "x"; RPAREN;
-      COMMA; RESULT; LIDENT "tmp"; PLUS; INT 1; RBRACE ];
+      COMMA; RESULT; LIDENT "tmp"; PLUS; NUM "1"; RBRACE ];
   check "list and projection" "[p.name, xs]"
     [ LBRACKET; LIDENT "p"; DOT; LIDENT "name"; COMMA; LIDENT "xs";
       RBRACKET ];
+  check "numeric exponent" "1e3 2E+4 5e-6"
+    [ NUM "1e3"; NUM "2E+4"; NUM "5e-6" ];
+  check "big numeric literal" "99999999999999999999"
+    [ NUM "99999999999999999999" ];
   check_error "unterminated string" "x = \"abc"
     "Unterminated string literal starting at :1:5";
   check_error "invalid escape" {|"a\qb"|}
@@ -88,6 +92,5 @@ let () =
     "Unexpected character '@' at :2:3";
   check_error "line after multi-line title" "spec a\nb\n{ }\n  !"
     "Unexpected character '!' at :4:3";
-  check_error "integer out of range" "99999999999999999999"
-    "Integer literal 99999999999999999999 is out of range at :1:1";
+
   if !failures > 0 then exit 1 else print_endline "lexer tests passed"

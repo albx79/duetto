@@ -2,7 +2,7 @@
 open Ast
 %}
 
-%token <int> INT
+%token <string> NUM
 %token <string> STRING
 %token <string> LABEL    (* 'name, without the quote *)
 %token <string> LIDENT   (* value names *)
@@ -32,7 +32,7 @@ main:
     expr EOF { $1 }
 
 expr:
-    | INT                  { Int $1 }
+    | NUM                  { Num $1 }
     | expr PLUS expr       { Add ($1, $3) }
     | expr MINUS expr       { Sub ($1, $3) }
     | expr TIMES expr      { Mul ($1, $3) }

@@ -31,6 +31,8 @@ let skip_newlines lexbuf text =
 }
 
 let digit = ['0'-'9']
+let exponent = ['e' 'E'] ['+' '-']? digit+
+let number = digit+ exponent?
 let lower = ['a'-'z' '_']
 let upper = ['A'-'Z']
 let ident_char = ['a'-'z' 'A'-'Z' '0'-'9' '_']
@@ -57,15 +59,7 @@ rule token = parse
     }
   | "spec" { SPEC "" }
 
-  | digit+ as n {
-      match int_of_string_opt n with
-      | Some n -> INT n
-      | None ->
-          error (Diagnostic.Integer_out_of_range {
-            literal = n;
-            position = position_of (Lexing.lexeme_start_p lexbuf);
-          })
-    }
+  | number as n { NUM n }
   | '"' {
       let start = Lexing.lexeme_start_p lexbuf in
       let s = string (Buffer.create 16) start lexbuf in

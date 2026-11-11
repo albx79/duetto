@@ -1,5 +1,12 @@
+let eval_num literal =
+  match int_of_string_opt literal with
+  | Some n -> n
+  | None ->
+      failwith (Printf.sprintf
+        "Runtime numeric error: expected an integer literal, got %S" literal)
+
 let rec eval = function
-  | Duetto.Ast.Int n -> n
+  | Duetto.Ast.Num literal -> eval_num literal
   | Duetto.Ast.Add (a, b) -> eval a + eval b
   | Duetto.Ast.Sub (a, b) -> eval a - eval b
   | Duetto.Ast.Mul (a, b) -> eval a * eval b
@@ -22,4 +29,7 @@ let () =
   with 
   | Duetto.Diagnostic.Error error -> 
       Printf.eprintf "Lexical error: %s\n" (Duetto.Diagnostic.string_of_error error);
-      exit 1      
+      exit 1
+  | Failure message ->
+      Printf.eprintf "%s\n" message;
+      exit 1

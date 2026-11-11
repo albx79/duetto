@@ -16,10 +16,7 @@ type error =
       sequence: string;
       position: position;
     }
-  | Integer_out_of_range of {
-      literal: string;
-      position: position;
-    }
+
   | Unexpected_token of {
       token: string;
       position: position;
@@ -53,9 +50,6 @@ let string_of_error = function
       Printf.sprintf "Invalid escape sequence '%s' at %s"
         sequence (string_of_position position)
 
-  | Integer_out_of_range { literal; position } ->
-      Printf.sprintf "Integer literal %s is out of range at %s"
-        literal (string_of_position position)
 
   | Unexpected_token { token; position } ->
       Printf.sprintf "Unexpected token '%s' at %s"
