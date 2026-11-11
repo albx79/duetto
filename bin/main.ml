@@ -7,6 +7,12 @@ let eval_num literal =
 
 let rec eval = function
   | Duetto.Ast.Num literal -> eval_num literal
+  | Duetto.Ast.Ident name ->
+      failwith (Printf.sprintf
+        "Runtime evaluator does not support identifiers yet (%s)" name)
+  | Duetto.Ast.Proj (_, field) ->
+      failwith (Printf.sprintf
+        "Runtime evaluator does not support projection yet (. %s)" field)
   | Duetto.Ast.Struct _ ->
       failwith "Runtime evaluator does not support struct values yet"
   | Duetto.Ast.Add (a, b) -> eval a + eval b

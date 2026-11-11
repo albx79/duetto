@@ -8,7 +8,7 @@ open Ast
 %token <string> LIDENT   (* value names *)
 %token <string> UIDENT   (* type names *)
 %token <string> SPEC     (* spec keyword with its free-text title *)
-%token CASE SOME ENSURE
+%token CASE SOME ENSURE DO
 %token ARROW EQEQ RESULT DOTDOT CONCAT
 %token PLUS
 %token MINUS
@@ -22,7 +22,8 @@ open Ast
 %token EOF
 
 %left PLUS MINUS
-%left TIMES DIV
+%left TIMES DIV MOD
+%left DOT
 
 %start <Ast.expr> main
 
@@ -33,7 +34,9 @@ main:
 
 expr:
     | NUM                  { Num $1 }
+    | LIDENT               { Ident $1 }
     | struct_expr          { $1 }
+    | expr DOT LIDENT      { Proj ($1, $3) }
     | expr PLUS expr       { Add ($1, $3) }
     | expr MINUS expr      { Sub ($1, $3) }
     | expr TIMES expr      { Mul ($1, $3) }
@@ -41,21 +44,28 @@ expr:
     | LPAREN expr RPAREN   { $2 }
 
 struct_expr:
-    | LBRACE struct_fields RBRACE { Struct $2 }
+    | LBRACE struct_body RBRACE { Struct $2 }
 
-struct_fields:
+struct_body:
     | { [] }
-    | nonempty_struct_fields { $1 }
+    | result_entry opt_comma { [$1] }
+    | nonresult_entry nonresult_tail { $1 :: $2 }
 
-nonempty_struct_fields:
-    | struct_field                              { [$1] }
-    | struct_field COMMA                        { [$1] }
-    | struct_field COMMA nonempty_struct_fields { $1 :: $3 }
+nonresult_tail:
+    | { [] }
+    | COMMA { [] }
+    | COMMA nonresult_entry nonresult_tail { $2 :: $3 }
+    | COMMA result_entry { [$2] }
+    | COMMA result_entry COMMA { [$2] }
 
-struct_field:
-    | LIDENT COLON field_value { ($1, $3) }
+opt_comma:
+    | { () }
+    | COMMA { () }
 
-field_value:
-    | NUM { Num $1 }
-    | struct_expr { $1 }
+nonresult_entry:
+    | LIDENT COLON expr { Field ($1, $3) }
+    | LIDENT EQUAL expr { Local ($1, $3) }
+
+result_entry:
+    | RESULT expr { Result $2 }
 

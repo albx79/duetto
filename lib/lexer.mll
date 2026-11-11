@@ -10,6 +10,7 @@ let position_of (pos : Lexing.position) : Diagnostic.position = {
 let error e = raise (Diagnostic.Error e)
 
 let keyword_or_ident = function
+  | "do" -> DO
   | "case" -> CASE
   | "some" -> SOME
   | "ensure" -> ENSURE

@@ -29,17 +29,38 @@ let check_error name src =
 
 let () =
   check "num literal" "42" (Num "42");
+  check "identifier" "x" (Ident "x");
+  check "projection" "person.name" (Proj (Ident "person", "name"));
+  check "chained projection" "a.b.c"
+    (Proj (Proj (Ident "a", "b"), "c"));
   check "empty struct" "{}" (Struct []);
   check "simple struct" "{ answer: 42 }"
-    (Struct [ ("answer", Num "42") ]);
+    (Struct [ Field ("answer", Num "42") ]);
   check "nested struct" "{ answer: 42, config: { retries: 3 } }"
     (Struct [
-      ("answer", Num "42");
-      ("config", Struct [ ("retries", Num "3") ]);
+      Field ("answer", Num "42");
+      Field ("config", Struct [ Field ("retries", Num "3") ]);
+    ]);
+  check "struct with identifier field" "{ answer: x }"
+    (Struct [ Field ("answer", Ident "x") ]);
+  check "struct with projection field" "{ name: person.name }"
+    (Struct [ Field ("name", Proj (Ident "person", "name")) ]);
+  check "local entry" "{ answer = 42 }"
+    (Struct [ Local ("answer", Num "42") ]);
+  check "result entry" "{ <<answer }"
+    (Struct [ Result (Ident "answer") ]);
+  check "locals and result" "{ x = 1, y = x, <<y }"
+    (Struct [
+      Local ("x", Num "1");
+      Local ("y", Ident "x");
+      Result (Ident "y");
     ]);
   check "trailing comma" "{ answer: 42, }"
-    (Struct [ ("answer", Num "42") ]);
-  check_error "field value must be num or struct" "{ answer: x }";
+    (Struct [ Field ("answer", Num "42") ]);
+  check "trailing comma after result" "{ x = 1, <<x, }"
+    (Struct [ Local ("x", Num "1"); Result (Ident "x") ]);
+  check_error "result must be last" "{ <<x, y = 1 }";
+  check_error "result must be last with fields" "{ a: 1, <<a, b: 2 }";
   check_error "missing colon" "{ answer 42 }";
 
   if !failures > 0 then exit 1 else print_endline "parser tests passed"

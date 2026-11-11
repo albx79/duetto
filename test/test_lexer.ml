@@ -7,7 +7,7 @@ let show = function
   | LIDENT x -> "LIDENT " ^ x
   | UIDENT x -> "UIDENT " ^ x
   | SPEC t -> Printf.sprintf "SPEC %S" t
-  | CASE -> "CASE" | SOME -> "SOME" | ENSURE -> "ENSURE"
+  | CASE -> "CASE" | SOME -> "SOME" | ENSURE -> "ENSURE" | DO -> "DO"
   | ARROW -> "ARROW" | EQEQ -> "EQEQ" | RESULT -> "RESULT"
   | DOTDOT -> "DOTDOT" | CONCAT -> "CONCAT"
   | PLUS -> "PLUS" | MINUS -> "MINUS" | TIMES -> "TIMES"
