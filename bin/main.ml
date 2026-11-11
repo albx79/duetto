@@ -7,6 +7,8 @@ let eval_num literal =
 
 let rec eval = function
   | Duetto.Ast.Num literal -> eval_num literal
+  | Duetto.Ast.Struct _ ->
+      failwith "Runtime evaluator does not support struct values yet"
   | Duetto.Ast.Add (a, b) -> eval a + eval b
   | Duetto.Ast.Sub (a, b) -> eval a - eval b
   | Duetto.Ast.Mul (a, b) -> eval a * eval b

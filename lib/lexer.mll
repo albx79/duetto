@@ -33,8 +33,10 @@ let skip_newlines lexbuf text =
 let digit = ['0'-'9']
 let exponent = ['e' 'E'] ['+' '-']? digit+
 let number = digit+ exponent?
-let lower = ['a'-'z' '_']
-let upper = ['A'-'Z']
+let lident_start = ['a'-'z' '_']
+let lident_char = ['a'-'z' '0'-'9' '_']
+let uident_start = ['A'-'Z']
+let uident_char = ['a'-'z' 'A'-'Z' '0'-'9']
 let ident_char = ['a'-'z' 'A'-'Z' '0'-'9' '_']
 let whitespace = [' ' '\t' '\r']+
 
@@ -66,9 +68,22 @@ rule token = parse
       lexbuf.lex_start_p <- start;
       STRING s
     }
-  | '\'' ((lower | upper) ident_char* as l) { LABEL l }
-  | lower ident_char* as name { keyword_or_ident name }
-  | upper ident_char* as name { UIDENT name }
+  | '\'' (lident_start lident_char* as l) { LABEL l }
+  | lident_start lident_char* as name { keyword_or_ident name }
+  | uident_start uident_char* '_' ident_char* {
+      let lexeme = Lexing.lexeme lexbuf in
+      let underscore_index = String.index lexeme '_' in
+      let start = Lexing.lexeme_start_p lexbuf in
+      let underscore_pos = {
+        start with
+        pos_cnum = start.pos_cnum + underscore_index;
+      } in
+      error (Diagnostic.Unexpected_character {
+        character = "_";
+        position = position_of underscore_pos;
+      })
+    }
+  | uident_start uident_char* as name { UIDENT name }
 
   | "->" { ARROW }
   | "==" { EQEQ }

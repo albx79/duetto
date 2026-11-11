@@ -59,6 +59,10 @@ let () =
   check "names and keywords" "x some_thing case some ensure Int Ordering"
     [ LIDENT "x"; LIDENT "some_thing"; CASE; SOME; ENSURE;
       UIDENT "Int"; UIDENT "Ordering" ];
+  check "identifier character classes" "fooBar 'foo_bar"
+    [ LIDENT "foo"; UIDENT "Bar"; LABEL "foo_bar" ];
+  check_error "uident cannot contain underscore" "Foo_Bar"
+    "Unexpected character '_' at :1:4";
   check "operators" "-> == = << .. . ++ + - * / % : | ?"
     [ ARROW; EQEQ; EQUAL; RESULT; DOTDOT; DOT; CONCAT; PLUS; MINUS;
       TIMES; DIV; MOD; COLON; BAR; QUESTION ];
