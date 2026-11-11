@@ -139,8 +139,8 @@ The same rule applies in every struct: files, modules, records, and blocks, for 
 
 ```duetto
 {
-  f = make_adder(1),   -- computed: backward-only
-  g = x -> h(f(x)),    -- lambda: may call h, defined later
+  f = make_adder(1),   # computed: backward-only
+  g = x -> h(f(x)),    # lambda: may call h, defined later
   h = x -> x * 2,
 }
 ```
@@ -171,17 +171,19 @@ A spec entry is `spec`, a title, and a struct. The title is part of the grammar,
 
 ### 3.7 Comments
 
-Comment syntax is not yet fixed; this draft uses `--`.
+A line comment starts with `#` and continues to the end of the line.
+
+The tokens `#[`, `]#`, and `#_` are reserved for future use.
 
 ### 3.8 Type entries
 
 There is no `type` keyword. **An entry whose name starts with an uppercase letter binds a type**, and its right-hand side is parsed as a type expression. A lowercase name binds a value; labels are marked with `'`. As with values, `:` makes a type public and `=` keeps it private:
 
 ```duetto
-Bool: 'true | 'false,                                -- public type
+Bool: 'true | 'false,                                # public type
 OrderingResult: 'lt | 'eq | 'gt,
 Ordering(A): { compare: (A, A) -> OrderingResult },
-Pair = { first: Int, second: Int },                  -- private type
+Pair = { first: Int, second: Int },                  # private type
 ```
 
 - Parameters at the head of an entry, as in `Ordering(A): ...`, can only mean a type constructor, since values have no `name(params)` form.
@@ -873,7 +875,7 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 - **Handlers** (section 16). Whether and when to bring back `try`, handler `case`, and second-class values. They can be added without breaking programs that return unions, but they would give the language two idioms for failure.
 - **Label sets shared between field checks** (formal core, section 9.2).
 - **Termination.** Reading `some` specs as proofs would require totality of the production functions involved, probably through an opt-in marker. Without it, the logical reading is partial correctness.
-- **Exact syntax** for imports, doubles, and comments.
+- **Exact syntax** for imports and doubles.
 
 ### 13.2 Deferred
 
@@ -1119,10 +1121,10 @@ Some values must not outlive the scope that created them. A raiser called after 
 4. A first-class value may be passed to a `$`-parameter, or bound to a `$`-local, because both only promise that the value will not escape. Binding a first-class value to a `$`-local **demotes** it: from then on it is second-class.
 
 ```duetto
-$nf = $errs.not_found,               -- allowed: second-class local
-nf = $errs.not_found,                -- error: second-class value bound to a plain name
-r = { on_missing: $errs.not_found }, -- error: a second-class record bound to a plain name
-$r = { on_missing: $errs.not_found }, -- allowed: a second-class record in a $-local
+$nf = $errs.not_found,               # allowed: second-class local
+nf = $errs.not_found,                # error: second-class value bound to a plain name
+r = { on_missing: $errs.not_found }, # error: a second-class record bound to a plain name
+$r = { on_missing: $errs.not_found }, # allowed: a second-class record in a $-local
 ```
 
 **Fields of second-class records.** A projection from a second-class record is second-class even when the field holds an ordinary value: `$h.config` is second-class whether or not `config` is a function. Types do not record which fields of a record are second-class (section D9.5), so the class of a path cannot depend on the field. A first-class value needed after the call should be passed as a separate argument. This keeps one rule for all paths, at the cost of the per-field precision discussed in section 4.8.
@@ -1147,9 +1149,9 @@ Payloads passed to raisers are first-class values, so they cannot contain `$` va
 
 ```duetto
 result = e.match({
-  num: n -> check(n, $errs.too_big),   -- second-class branch
+  num: n -> check(n, $errs.too_big),   # second-class branch
   add: (l, r) -> ...,
-}),                                     -- allowed if match takes a $-parameter
+}),                                     # allowed if match takes a $-parameter
 ```
 
 **`$` in function types.** A function type may mark a parameter as second-class, so type aliases can express it:

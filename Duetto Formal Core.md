@@ -93,6 +93,8 @@ A binding whose right-hand side is syntactically a lambda is a **lambda binding*
 
 In the core, **spec entries appear only at file level**, and a spec body is not a struct in the sense of section 4: its bindings are typed by the spec rules of section 5.2, and are never generalized.
 
+**Comment syntax (surface).** In Duetto source, a line comment starts with `#` and continues to end of line. The tokens `#[`, `]#`, and `#_` are reserved for future use. The `--` markers in grammar blocks in this document are only metalanguage annotations.
+
 ## 3. Typing expressions
 
 Typing is constraint-based. The judgment `Γ ⊢ e : τ ⊣ C` says that `e` has type `τ` under the constraints `C`. Constraints are of two kinds:
