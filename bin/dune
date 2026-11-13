@@ -1,4 +1,5 @@
 (executable
  (public_name duetto)
  (name main)
- (libraries duetto))
+ (libraries duetto)
+ (preprocess (pps ppx_deriving.show)))

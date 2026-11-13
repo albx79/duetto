@@ -26,10 +26,14 @@ open Ast
 %left DOT
 
 %start <Ast.expr> main
+%start <Ast.expr> expr_main
 
 %%
 
 main:
+    struct_body EOF { Struct $1 }
+
+expr_main:
     expr EOF { $1 }
 
 expr:

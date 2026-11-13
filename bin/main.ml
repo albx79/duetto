@@ -5,23 +5,44 @@ let eval_num literal =
       failwith (Printf.sprintf
         "Runtime numeric error: expected an integer literal, got %S" literal)
 
+type parsed_expr = 
+  | Atom of int
+  | Tree of (string * parsed_expr) list
+[@@deriving show]
+
 let rec eval = function
-  | Duetto.Ast.Num literal -> eval_num literal
+  | Duetto.Ast.Num literal -> Atom (eval_num literal)
   | Duetto.Ast.Ident name ->
       failwith (Printf.sprintf
         "Runtime evaluator does not support identifiers yet (%s)" name)
   | Duetto.Ast.Proj (_, field) ->
       failwith (Printf.sprintf
         "Runtime evaluator does not support projection yet (. %s)" field)
-  | Duetto.Ast.Some_val (Duetto.Ast.Type_ident "Num") -> Random.int 100
+  | Duetto.Ast.Some_val (Duetto.Ast.Type_ident "Num") -> Atom (Random.int 100)
   | Duetto.Ast.Some_val _ ->
       failwith "Runtime evaluator does not support some(...) yet"
-  | Duetto.Ast.Struct _ ->
-      failwith "Runtime evaluator does not support struct values yet"
-  | Duetto.Ast.Add (a, b) -> eval a + eval b
-  | Duetto.Ast.Sub (a, b) -> eval a - eval b
-  | Duetto.Ast.Mul (a, b) -> eval a * eval b
-  | Duetto.Ast.Div (a, b) -> eval a / eval b
+  | Duetto.Ast.Struct fields -> Tree (List.map eval_field fields)
+  | Duetto.Ast.Add (a, b) -> 
+    (match (eval a, eval b) with
+    | (Atom a, Atom b) -> Atom (a + b)
+    | _ -> failwith "can only add atoms")
+  | Duetto.Ast.Sub (a, b) -> 
+    (match (eval a, eval b) with
+    | (Atom a, Atom b) -> Atom (a - b)
+    | _ -> failwith "can only subtract atoms")
+  | Duetto.Ast.Mul (a, b) -> 
+    (match (eval a, eval b) with
+    | (Atom a, Atom b) -> Atom (a * b)
+    | _ -> failwith "can only multiply atoms")
+  | Duetto.Ast.Div (a, b) -> 
+    (match (eval a, eval b) with
+    | (Atom a, Atom b) -> Atom (a / b)
+    | _ -> failwith "can only divide atoms")
+  and eval_field = function
+      | Field (s, e) -> (s, eval e)
+      | Local (s, e) -> (s, eval e)
+      | Result e -> 
+          failwith "Results are not supported"
 
 let () =
   Random.self_init ();
@@ -37,7 +58,7 @@ let () =
     let ast = Duetto.Parse.parse lexbuf in
     let result = eval ast in
     Printf.printf "AST: %s\n" (Duetto.Ast.show_expr ast);
-    Printf.printf "Result: %d\n" result
+    Printf.printf "Result: %s\n" (show_parsed_expr result)
   with 
   | Duetto.Diagnostic.Error error -> 
       Printf.eprintf "Lexical error: %s\n" (Duetto.Diagnostic.string_of_error error);

@@ -2,7 +2,7 @@ open Duetto.Ast
 
 let parse src =
   let lexbuf = Lexing.from_string src in
-  Duetto.Parse.parse lexbuf
+  Duetto.Parse.parse_expr lexbuf
 
 let failures = ref 0
 

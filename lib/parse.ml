@@ -1,9 +1,5 @@
-let parse lexbuf =
+let parse_with checkpoint lexbuf =
   let module I = Parser.MenhirInterpreter in
-
-  let checkpoint =
-    Parser.Incremental.main lexbuf.Lexing.lex_curr_p
-  in
 
   let rec loop checkpoint =
     match checkpoint with
@@ -55,3 +51,9 @@ let parse lexbuf =
   in
 
   loop checkpoint
+
+let parse lexbuf =
+  parse_with (Parser.Incremental.main lexbuf.Lexing.lex_curr_p) lexbuf
+
+let parse_expr lexbuf =
+  parse_with (Parser.Incremental.expr_main lexbuf.Lexing.lex_curr_p) lexbuf
