@@ -49,12 +49,25 @@ expr:
     | LIDENT               { mk (Ident $1) $startpos $endpos }
     | SOME LPAREN type_expr RPAREN { mk (Some_val $3) $startpos $endpos }
     | struct_expr          { $1 }
+    | list_expr            { $1 }
     | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
     | expr PLUS expr       { mk (Add ($1, $3)) $startpos $endpos }
     | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }
     | expr TIMES expr      { mk (Mul ($1, $3)) $startpos $endpos }
     | expr DIV expr        { mk (Div ($1, $3)) $startpos $endpos }
     | LPAREN expr RPAREN   { $2 }
+
+list_expr:
+    | LBRACKET list_items RBRACKET { mk (List $2) $startpos $endpos }
+
+list_items:
+    | { [] }
+    | expr list_item_rest { $1 :: $2 }
+
+list_item_rest:
+    | { [] }
+    | COMMA { [] }
+    | COMMA expr list_item_rest { $2 :: $3 }
 
 struct_expr:
     | LBRACE struct_body RBRACE { mk (Struct $2) $startpos $endpos }

@@ -44,6 +44,19 @@ let () =
     (Proj (Proj (Ident "a", "b"), "c"));
   check "arithmetic" "1 + 2"
     (Add (Num "1", Num "2"));
+  check "empty list" "[]"
+    (List []);
+  check "list of expressions" "[1, x, person.name]"
+    (List [
+      Num "1";
+      Ident "x";
+      Proj (Ident "person", "name");
+    ]);
+  check "nested lists" "[[], [1, 2]]"
+    (List [
+      List [];
+      List [Num "1"; Num "2"];
+    ]);
 
   check "some simple type" "some(Int)"
     (Some_val (Type_ident "Int"));
@@ -111,6 +124,8 @@ let () =
   check_error "result must be last" "{ <<x, y = 1 }";
   check_error "result must be last with fields" "{ a: 1, <<a, b: 2 }";
   check_error "missing colon" "{ answer 42 }";
+  check "list trailing comma" "[1, 2,]"
+    (List [Num "1"; Num "2"]);
   check_error "type fields require lowercase names" "some({ Name: Int })";
 
   if !failures > 0 then exit 1 else print_endline "parser tests passed"

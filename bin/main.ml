@@ -26,6 +26,8 @@ let rec eval (expr : A.expr) =
   | A.Some_val _ ->
       failwith "Runtime evaluator does not support some(...) yet"
   | A.Struct fields -> Tree (List.map eval_field fields)
+  | A.List _ ->
+      failwith "Runtime evaluator does not support list values yet"
   | A.Add (a, b) ->
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a + b)
