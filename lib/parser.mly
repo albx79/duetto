@@ -35,7 +35,7 @@ main:
 expr:
     | NUM                  { Num $1 }
     | LIDENT               { Ident $1 }
-    | SOME LPAREN type_expr RPAREN { Some $3 }
+    | SOME LPAREN type_expr RPAREN { Some_val $3 }
     | struct_expr          { $1 }
     | expr DOT LIDENT      { Proj ($1, $3) }
     | expr PLUS expr       { Add ($1, $3) }

@@ -12,7 +12,7 @@ and expr =
   | Num of string
   | Ident of string
   | Proj of expr * string
-  | Some of type_expr
+  | Some_val of type_expr
   | Struct of struct_entry list
   | Add of expr * expr
   | Sub of expr * expr

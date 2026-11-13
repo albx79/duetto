@@ -34,16 +34,16 @@ let () =
   check "chained projection" "a.b.c"
     (Proj (Proj (Ident "a", "b"), "c"));
   check "some simple type" "some(Int)"
-    (Some (Type_ident "Int"));
+    (Some_val (Type_ident "Int"));
   check "some type application" "some(Result(Int, String))"
-    (Some (Type_apply ("Result", [Type_ident "Int"; Type_ident "String"])));
+    (Some_val (Type_apply ("Result", [Type_ident "Int"; Type_ident "String"])));
   check "some record type" "some({ name: String, age: Int })"
-    (Some (Type_record [
+    (Some_val (Type_record [
       ("name", Type_ident "String");
       ("age", Type_ident "Int");
     ]));
   check "some nested type" "some(Option({ value: Num }))"
-    (Some (Type_apply ("Option", [
+    (Some_val (Type_apply ("Option", [
       Type_record [ ("value", Type_ident "Num") ];
     ])));
   check "empty struct" "{}" (Struct []);

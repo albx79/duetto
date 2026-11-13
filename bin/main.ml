@@ -13,8 +13,8 @@ let rec eval = function
   | Duetto.Ast.Proj (_, field) ->
       failwith (Printf.sprintf
         "Runtime evaluator does not support projection yet (. %s)" field)
-  | Duetto.Ast.Some (Duetto.Ast.Type_ident "Num") -> Random.int 100
-  | Duetto.Ast.Some _ ->
+  | Duetto.Ast.Some_val (Duetto.Ast.Type_ident "Num") -> Random.int 100
+  | Duetto.Ast.Some_val _ ->
       failwith "Runtime evaluator does not support some(...) yet"
   | Duetto.Ast.Struct _ ->
       failwith "Runtime evaluator does not support struct values yet"
