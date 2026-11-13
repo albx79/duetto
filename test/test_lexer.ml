@@ -83,6 +83,9 @@ let () =
   check "block" "{ tmp = f(x), <<tmp + 1 }"
     [ LBRACE; LIDENT "tmp"; EQUAL; LIDENT "f"; LPAREN; LIDENT "x"; RPAREN;
       COMMA; RESULT; LIDENT "tmp"; PLUS; NUM "1"; RBRACE ];
+  check "call" "ord.compare(a, f(),)"
+    [ LIDENT "ord"; DOT; LIDENT "compare"; LPAREN; LIDENT "a"; COMMA;
+      LIDENT "f"; LPAREN; RPAREN; COMMA; RPAREN ];
   check "list and projection" "[p.name, xs]"
     [ LBRACKET; LIDENT "p"; DOT; LIDENT "name"; COMMA; LIDENT "xs";
       RBRACKET ];

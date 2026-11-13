@@ -70,6 +70,7 @@ module Make (W : WRAP) = struct
     | String of string
     | Ident of string
     | Proj of expr * string
+    | Call of expr * expr list
     | Lambda of string list * expr
     | Some_val of type_expr
     | Struct of struct_entry list

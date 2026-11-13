@@ -74,6 +74,44 @@ let () =
     (Concat (Ident "a", Ident "b"));
   check "concat projections" "person.name ++ suffix"
     (Concat (Proj (Ident "person", "name"), Ident "suffix"));
+  check "call no args" "f()"
+    (Call (Ident "f", []));
+  check "call one arg" "f(x)"
+    (Call (Ident "f", [Ident "x"]));
+  check "call many args" "f(1, x, \"s\")"
+    (Call (Ident "f", [Num "1"; Ident "x"; String "s"]));
+  check "call trailing comma" "f(x, y,)"
+    (Call (Ident "f", [Ident "x"; Ident "y"]));
+  check "nested call" "h(f(x))"
+    (Call (Ident "h", [Call (Ident "f", [Ident "x"])]));
+  check "curried call" "f(x)(y)"
+    (Call (Call (Ident "f", [Ident "x"]), [Ident "y"]));
+  check "method call" "ord.compare(a, b)"
+    (Call (Proj (Ident "ord", "compare"), [Ident "a"; Ident "b"]));
+  check "projection of call result" "f(x).name"
+    (Proj (Call (Ident "f", [Ident "x"]), "name"));
+  check "call of parenthesised ident" "(f)(x)"
+    (Call (Ident "f", [Ident "x"]));
+  check "call of parenthesised lambda" "(x -> x)(1)"
+    (Call (Lambda (["x"], Ident "x"), [Num "1"]));
+  check "call binds tighter than arithmetic" "a + f(x) * 2"
+    (Add (Ident "a", Mul (Call (Ident "f", [Ident "x"]), Num "2")));
+  check "call in lambda body" "x -> h(f(x))"
+    (Lambda (["x"], Call (Ident "h", [Call (Ident "f", [Ident "x"])])));
+  check "lambda as argument" "map(xs, x -> x + 1)"
+    (Call (Ident "map", [
+      Ident "xs";
+      Lambda (["x"], Add (Ident "x", Num "1"));
+    ]));
+  check "call with struct argument" "f({ a: 1 })"
+    (Call (Ident "f", [Struct [Field ("a", Num "1")]]));
+  check "call in struct" "{ tmp = f(x), <<tmp + 1 }"
+    (Struct [
+      Local ("tmp", Call (Ident "f", [Ident "x"]));
+      Result (Add (Ident "tmp", Num "1"));
+    ]);
+  check_error "call lone comma" "f(,)";
+  check_error "call missing close paren" "f(x";
   check "empty list" "[]"
     (List []);
   check "list of expressions" "[1, x, person.name, \"ok\"]"

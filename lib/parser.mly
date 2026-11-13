@@ -15,7 +15,7 @@ let mk node start_pos end_pos =
 %right ARROW
 %left PLUS MINUS CONCAT
 %left TIMES DIV MOD
-%left DOT
+%left DOT LPAREN
 
 %start <A.expr> main
 %start <A.expr> expr_main
@@ -46,6 +46,7 @@ expr:
     | struct_expr          { $1 }
     | list_expr            { $1 }
     | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
+    | expr LPAREN expr_items RPAREN { mk (Call ($1, $3)) $startpos $endpos }
     | expr CONCAT expr     { mk (Concat ($1, $3)) $startpos $endpos }
     | expr PLUS expr       { mk (Add ($1, $3)) $startpos $endpos }
     | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }
@@ -59,16 +60,16 @@ lambda_params_rest:
     | LIDENT COMMA lambda_params_rest { $1 :: $3 }
 
 list_expr:
-    | LBRACKET list_items RBRACKET { mk (List $2) $startpos $endpos }
+    | LBRACKET expr_items RBRACKET { mk (List $2) $startpos $endpos }
 
-list_items:
+expr_items:
     | { [] }
-    | expr list_item_rest { $1 :: $2 }
+    | expr expr_item_rest { $1 :: $2 }
 
-list_item_rest:
+expr_item_rest:
     | { [] }
     | COMMA { [] }
-    | COMMA expr list_item_rest { $2 :: $3 }
+    | COMMA expr expr_item_rest { $2 :: $3 }
 
 struct_expr:
     | LBRACE struct_body RBRACE { mk (Struct $2) $startpos $endpos }
