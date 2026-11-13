@@ -1,4 +1,7 @@
-open Duetto.Parser
+module P = Duetto.Parser.Make (Duetto.Ast.Unit)
+module L = Duetto.Lexer.Make (P)
+
+open P
 
 let show = function
   | NUM n -> Printf.sprintf "NUM %S" n
@@ -22,7 +25,7 @@ let show = function
 let tokens src =
   let lexbuf = Lexing.from_string src in
   let rec go acc =
-    match Duetto.Lexer.token lexbuf with
+    match L.token lexbuf with
     | EOF -> List.rev acc
     | t -> go (t :: acc)
   in

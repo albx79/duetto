@@ -1,3 +1,5 @@
+module A = Duetto.Ast.Located
+
 let eval_num literal =
   match int_of_string_opt literal with
   | Some n -> n
@@ -5,44 +7,48 @@ let eval_num literal =
       failwith (Printf.sprintf
         "Runtime numeric error: expected an integer literal, got %S" literal)
 
-type parsed_expr = 
+type parsed_expr =
   | Atom of int
   | Tree of (string * parsed_expr) list
 [@@deriving show]
 
-let rec eval = function
-  | Duetto.Ast.Num literal -> Atom (eval_num literal)
-  | Duetto.Ast.Ident name ->
+let rec eval (expr : A.expr) =
+  match expr.node with
+  | A.Num literal -> Atom (eval_num literal)
+  | A.Ident name ->
       failwith (Printf.sprintf
         "Runtime evaluator does not support identifiers yet (%s)" name)
-  | Duetto.Ast.Proj (_, field) ->
+  | A.Proj (_, field) ->
       failwith (Printf.sprintf
         "Runtime evaluator does not support projection yet (. %s)" field)
-  | Duetto.Ast.Some_val (Duetto.Ast.Type_ident "Num") -> Atom (Random.int 100)
-  | Duetto.Ast.Some_val _ ->
+  | A.Some_val { node = A.Type_ident "Num"; _ } ->
+      Atom (Random.int 100)
+  | A.Some_val _ ->
       failwith "Runtime evaluator does not support some(...) yet"
-  | Duetto.Ast.Struct fields -> Tree (List.map eval_field fields)
-  | Duetto.Ast.Add (a, b) -> 
-    (match (eval a, eval b) with
-    | (Atom a, Atom b) -> Atom (a + b)
-    | _ -> failwith "can only add atoms")
-  | Duetto.Ast.Sub (a, b) -> 
-    (match (eval a, eval b) with
-    | (Atom a, Atom b) -> Atom (a - b)
-    | _ -> failwith "can only subtract atoms")
-  | Duetto.Ast.Mul (a, b) -> 
-    (match (eval a, eval b) with
-    | (Atom a, Atom b) -> Atom (a * b)
-    | _ -> failwith "can only multiply atoms")
-  | Duetto.Ast.Div (a, b) -> 
-    (match (eval a, eval b) with
-    | (Atom a, Atom b) -> Atom (a / b)
-    | _ -> failwith "can only divide atoms")
-  and eval_field = function
-      | Field (s, e) -> (s, eval e)
-      | Local (s, e) -> (s, eval e)
-      | Result e -> 
-          failwith "Results are not supported"
+  | A.Struct fields -> Tree (List.map eval_field fields)
+  | A.Add (a, b) ->
+      (match (eval a, eval b) with
+      | (Atom a, Atom b) -> Atom (a + b)
+      | _ -> failwith "can only add atoms")
+  | A.Sub (a, b) ->
+      (match (eval a, eval b) with
+      | (Atom a, Atom b) -> Atom (a - b)
+      | _ -> failwith "can only subtract atoms")
+  | A.Mul (a, b) ->
+      (match (eval a, eval b) with
+      | (Atom a, Atom b) -> Atom (a * b)
+      | _ -> failwith "can only multiply atoms")
+  | A.Div (a, b) ->
+      (match (eval a, eval b) with
+      | (Atom a, Atom b) -> Atom (a / b)
+      | _ -> failwith "can only divide atoms")
+
+and eval_field (entry : A.struct_entry) =
+  match entry.node with
+  | A.Field (s, e) -> (s, eval e)
+  | A.Local (s, e) -> (s, eval e)
+  | A.Result _ ->
+      failwith "Results are not supported"
 
 let () =
   Random.self_init ();
@@ -54,13 +60,16 @@ let () =
       lexbuf.lex_curr_p with
       pos_fname = "<stdin>";
     };
-    
+
     let ast = Duetto.Parse.parse lexbuf in
     let result = eval ast in
-    Printf.printf "AST: %s\n" (Duetto.Ast.show_expr ast);
+    let ast_text =
+      Format.asprintf "%a" A.pp_expr ast
+    in
+    Printf.printf "AST: %s\n" ast_text;
     Printf.printf "Result: %s\n" (show_parsed_expr result)
-  with 
-  | Duetto.Diagnostic.Error error -> 
+  with
+  | Duetto.Diagnostic.Error error ->
       Printf.eprintf "Lexical error: %s\n" (Duetto.Diagnostic.string_of_error error);
       exit 1
   | Failure message ->

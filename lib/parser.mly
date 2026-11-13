@@ -1,6 +1,14 @@
 %{
-open Ast
+open A
+
+let mk_loc start_pos end_pos =
+  of_lexing_positions start_pos end_pos
+
+let mk node start_pos end_pos =
+  with_loc (mk_loc start_pos end_pos) node
 %}
+
+%parameter <A : Ast.S>
 
 %token <string> NUM
 %token <string> STRING
@@ -25,31 +33,31 @@ open Ast
 %left TIMES DIV MOD
 %left DOT
 
-%start <Ast.expr> main
-%start <Ast.expr> expr_main
+%start <A.expr> main
+%start <A.expr> expr_main
 
 %%
 
 main:
-    struct_body EOF { Struct $1 }
+    struct_body EOF { mk (Struct $1) $startpos $endpos }
 
 expr_main:
     expr EOF { $1 }
 
 expr:
-    | NUM                  { Num $1 }
-    | LIDENT               { Ident $1 }
-    | SOME LPAREN type_expr RPAREN { Some_val $3 }
+    | NUM                  { mk (Num $1) $startpos $endpos }
+    | LIDENT               { mk (Ident $1) $startpos $endpos }
+    | SOME LPAREN type_expr RPAREN { mk (Some_val $3) $startpos $endpos }
     | struct_expr          { $1 }
-    | expr DOT LIDENT      { Proj ($1, $3) }
-    | expr PLUS expr       { Add ($1, $3) }
-    | expr MINUS expr      { Sub ($1, $3) }
-    | expr TIMES expr      { Mul ($1, $3) }
-    | expr DIV expr        { Div ($1, $3) }
+    | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
+    | expr PLUS expr       { mk (Add ($1, $3)) $startpos $endpos }
+    | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }
+    | expr TIMES expr      { mk (Mul ($1, $3)) $startpos $endpos }
+    | expr DIV expr        { mk (Div ($1, $3)) $startpos $endpos }
     | LPAREN expr RPAREN   { $2 }
 
 struct_expr:
-    | LBRACE struct_body RBRACE { Struct $2 }
+    | LBRACE struct_body RBRACE { mk (Struct $2) $startpos $endpos }
 
 struct_body:
     | { [] }
@@ -68,16 +76,16 @@ opt_comma:
     | COMMA { () }
 
 nonresult_entry:
-    | LIDENT COLON expr { Field ($1, $3) }
-    | LIDENT EQUAL expr { Local ($1, $3) }
+    | LIDENT COLON expr { mk (Field ($1, $3)) $startpos $endpos }
+    | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
 
 result_entry:
-    | RESULT expr { Result $2 }
+    | RESULT expr { mk (Result $2) $startpos $endpos }
 
 type_expr:
-    | UIDENT { Type_ident $1 }
-    | UIDENT LPAREN type_expr_args RPAREN { Type_apply ($1, $3) }
-    | LBRACE type_record_fields RBRACE { Type_record $2 }
+    | UIDENT { mk (Type_ident $1) $startpos $endpos }
+    | UIDENT LPAREN type_expr_args RPAREN { mk (Type_apply ($1, $3)) $startpos $endpos }
+    | LBRACE type_record_fields RBRACE { mk (Type_record $2) $startpos $endpos }
 
 type_expr_args:
     | type_expr { [$1] }
@@ -95,4 +103,3 @@ type_record_field_list:
 
 type_record_field:
     | LIDENT COLON type_expr { ($1, $3) }
-

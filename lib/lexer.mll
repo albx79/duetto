@@ -1,5 +1,43 @@
 {
-open Parser
+module type TOKENS = sig
+  type token =
+    | UIDENT of string
+    | TIMES
+    | STRING of string
+    | SPEC of string
+    | SOME
+    | RPAREN
+    | RESULT
+    | RBRACKET
+    | RBRACE
+    | QUESTION
+    | PLUS
+    | NUM of string
+    | MOD
+    | MINUS
+    | LPAREN
+    | LIDENT of string
+    | LBRACKET
+    | LBRACE
+    | LABEL of string
+    | EQUAL
+    | EQEQ
+    | EOF
+    | ENSURE
+    | DOTDOT
+    | DOT
+    | DO
+    | DIV
+    | CONCAT
+    | COMMA
+    | COLON
+    | CASE
+    | BAR
+    | ARROW
+end
+
+module Make (T : TOKENS) = struct
+open T
 
 let position_of (pos : Lexing.position) : Diagnostic.position = {
   filename = pos.pos_fname;
@@ -134,3 +172,7 @@ and string buf start = parse
       error (Diagnostic.Unterminated_string { position = position_of start })
     }
   | [^ '"' '\\' '\n']+ as s { Buffer.add_string buf s; string buf start lexbuf }
+
+{
+end
+}

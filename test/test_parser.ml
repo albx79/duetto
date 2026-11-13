@@ -1,8 +1,16 @@
-open Duetto.Ast
+module A = Duetto.Ast.Unit
+open A
+
+type test_expr = expr
+type test_expr_node = expr_node
+type test_type_expr = type_expr
+type test_type_expr_node = type_expr_node
+type test_struct_entry = struct_entry
+type test_struct_entry_node = struct_entry_node
 
 let parse src =
   let lexbuf = Lexing.from_string src in
-  Duetto.Parse.parse_expr lexbuf
+  Duetto.Parse.parse_expr_unit lexbuf
 
 let failures = ref 0
 
@@ -12,8 +20,8 @@ let check name src expected =
   | actual ->
       incr failures;
       Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name
-        (Duetto.Ast.show_expr expected)
-        (Duetto.Ast.show_expr actual)
+        (show_expr expected)
+        (show_expr actual)
   | exception Duetto.Diagnostic.Error e ->
       incr failures;
       Printf.printf "FAIL %s\n  expected parse success\n  actual error: %s\n" name
@@ -30,13 +38,20 @@ let check_error name src =
 let () =
   check "num literal" "42" (Num "42");
   check "identifier" "x" (Ident "x");
-  check "projection" "person.name" (Proj (Ident "person", "name"));
+  check "projection" "person.name"
+    (Proj (Ident "person", "name"));
   check "chained projection" "a.b.c"
     (Proj (Proj (Ident "a", "b"), "c"));
+  check "arithmetic" "1 + 2"
+    (Add (Num "1", Num "2"));
+
   check "some simple type" "some(Int)"
     (Some_val (Type_ident "Int"));
   check "some type application" "some(Result(Int, String))"
-    (Some_val (Type_apply ("Result", [Type_ident "Int"; Type_ident "String"])));
+    (Some_val (Type_apply ("Result", [
+      Type_ident "Int";
+      Type_ident "String";
+    ])));
   check "some record type" "some({ name: String, age: Int })"
     (Some_val (Type_record [
       ("name", Type_ident "String");
@@ -44,24 +59,39 @@ let () =
     ]));
   check "some nested type" "some(Option({ value: Num }))"
     (Some_val (Type_apply ("Option", [
-      Type_record [ ("value", Type_ident "Num") ];
+      Type_record [
+        ("value", Type_ident "Num");
+      ];
     ])));
+
   check "empty struct" "{}" (Struct []);
   check "simple struct" "{ answer: 42 }"
-    (Struct [ Field ("answer", Num "42") ]);
+    (Struct [
+      Field ("answer", Num "42");
+    ]);
   check "nested struct" "{ answer: 42, config: { retries: 3 } }"
     (Struct [
       Field ("answer", Num "42");
-      Field ("config", Struct [ Field ("retries", Num "3") ]);
+      Field ("config", Struct [
+        Field ("retries", Num "3");
+      ]);
     ]);
   check "struct with identifier field" "{ answer: x }"
-    (Struct [ Field ("answer", Ident "x") ]);
+    (Struct [
+      Field ("answer", Ident "x");
+    ]);
   check "struct with projection field" "{ name: person.name }"
-    (Struct [ Field ("name", Proj (Ident "person", "name")) ]);
+    (Struct [
+      Field ("name", Proj (Ident "person", "name"));
+    ]);
   check "local entry" "{ answer = 42 }"
-    (Struct [ Local ("answer", Num "42") ]);
+    (Struct [
+      Local ("answer", Num "42");
+    ]);
   check "result entry" "{ <<answer }"
-    (Struct [ Result (Ident "answer") ]);
+    (Struct [
+      Result (Ident "answer");
+    ]);
   check "locals and result" "{ x = 1, y = x, <<y }"
     (Struct [
       Local ("x", Num "1");
@@ -69,9 +99,15 @@ let () =
       Result (Ident "y");
     ]);
   check "trailing comma" "{ answer: 42, }"
-    (Struct [ Field ("answer", Num "42") ]);
+    (Struct [
+      Field ("answer", Num "42");
+    ]);
   check "trailing comma after result" "{ x = 1, <<x, }"
-    (Struct [ Local ("x", Num "1"); Result (Ident "x") ]);
+    (Struct [
+      Local ("x", Num "1");
+      Result (Ident "x");
+    ]);
+
   check_error "result must be last" "{ <<x, y = 1 }";
   check_error "result must be last with fields" "{ a: 1, <<a, b: 2 }";
   check_error "missing colon" "{ answer 42 }";

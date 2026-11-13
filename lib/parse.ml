@@ -1,59 +1,105 @@
-let parse_with checkpoint lexbuf =
-  let module I = Parser.MenhirInterpreter in
+module Prod_ast = Ast.Located
+module Unit_ast = Ast.Unit
 
-  let rec loop checkpoint =
-    match checkpoint with
+module Prod_parser = Parser.Make (Prod_ast)
+module Unit_parser = Parser.Make (Unit_ast)
 
-    | I.InputNeeded _ ->
-        let token = Lexer.token lexbuf in
+module Prod_lexer = Lexer.Make (Prod_parser)
+module Unit_lexer = Lexer.Make (Unit_parser)
 
-        let startp = Lexing.lexeme_start_p lexbuf in
-        let endp = Lexing.lexeme_end_p lexbuf in
+module Make_parse
+  (P : sig
+    type token
+    type main_result
+    type expr_result
+    module MenhirInterpreter : MenhirLib.IncrementalEngine.INCREMENTAL_ENGINE
+      with type token = token
+    module Incremental : sig
+      val main : Lexing.position -> main_result MenhirInterpreter.checkpoint
+      val expr_main : Lexing.position -> expr_result MenhirInterpreter.checkpoint
+    end
+  end)
+  (L : sig
+    val token : Lexing.lexbuf -> P.token
+  end) =
+struct
+  let parse_with checkpoint lexbuf =
+    let module I = P.MenhirInterpreter in
 
-        let checkpoint =
-          I.offer checkpoint (token, startp, endp)
-        in
+    let rec loop checkpoint =
+      match checkpoint with
+      | I.InputNeeded _ ->
+          let token = L.token lexbuf in
 
-        loop checkpoint
+          let startp = Lexing.lexeme_start_p lexbuf in
+          let endp = Lexing.lexeme_end_p lexbuf in
 
-    | I.Shifting _
-    | I.AboutToReduce _ ->
-        loop (I.resume checkpoint)
+          let checkpoint =
+            I.offer checkpoint (token, startp, endp)
+          in
 
-    | I.HandlingError _ ->
-        let pos = Lexing.lexeme_start_p lexbuf in
-        let column = pos.pos_cnum - pos.pos_bol + 1 in
-        let token = Lexing.lexeme lexbuf in
+          loop checkpoint
 
-        let position = {
-          Diagnostic.filename = pos.pos_fname;
-          line = pos.pos_lnum;
-          column;
-        } in
+      | I.Shifting _
+      | I.AboutToReduce _ ->
+          loop (I.resume checkpoint)
 
-        if token = "" then
-          raise (Diagnostic.Error (
-            Diagnostic.Unexpected_end_of_input { position }
-          ))
-        else
-          raise (Diagnostic.Error (
-            Diagnostic.Unexpected_token {
-              token;
-              position;
-            }
-          ))
+      | I.HandlingError _ ->
+          let pos = Lexing.lexeme_start_p lexbuf in
+          let column = pos.pos_cnum - pos.pos_bol + 1 in
+          let token = Lexing.lexeme lexbuf in
 
-    | I.Accepted ast ->
-        ast
+          let position = {
+            Diagnostic.filename = pos.pos_fname;
+            line = pos.pos_lnum;
+            column;
+          } in
 
-    | I.Rejected ->
-        failwith "Parser rejected input unexpectedly"
-  in
+          if token = "" then
+            raise (Diagnostic.Error (
+              Diagnostic.Unexpected_end_of_input { position }
+            ))
+          else
+            raise (Diagnostic.Error (
+              Diagnostic.Unexpected_token {
+                token;
+                position;
+              }
+            ))
 
-  loop checkpoint
+      | I.Accepted ast ->
+          ast
 
-let parse lexbuf =
-  parse_with (Parser.Incremental.main lexbuf.Lexing.lex_curr_p) lexbuf
+      | I.Rejected ->
+          failwith "Parser rejected input unexpectedly"
+    in
 
-let parse_expr lexbuf =
-  parse_with (Parser.Incremental.expr_main lexbuf.Lexing.lex_curr_p) lexbuf
+    loop checkpoint
+
+  let parse lexbuf =
+    parse_with (P.Incremental.main lexbuf.Lexing.lex_curr_p) lexbuf
+
+  let parse_expr lexbuf =
+    parse_with (P.Incremental.expr_main lexbuf.Lexing.lex_curr_p) lexbuf
+end
+
+module Prod_parser_instance = struct
+  include Prod_parser
+  type main_result = Prod_ast.expr
+  type expr_result = Prod_ast.expr
+end
+
+module Unit_parser_instance = struct
+  include Unit_parser
+  type main_result = Unit_ast.expr
+  type expr_result = Unit_ast.expr
+end
+
+module Prod_parse = Make_parse (Prod_parser_instance) (Prod_lexer)
+module Unit_parse = Make_parse (Unit_parser_instance) (Unit_lexer)
+
+let parse = Prod_parse.parse
+let parse_expr = Prod_parse.parse_expr
+
+let parse_unit = Unit_parse.parse
+let parse_expr_unit = Unit_parse.parse_expr
