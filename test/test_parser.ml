@@ -41,6 +41,20 @@ let () =
   check "identifier" "x" (Ident "x");
   check "lambda one arg" "x -> x"
     (Lambda (["x"], Ident "x"));
+  check "parenthesised ident" "(x)" (Ident "x");
+  check "lambda one parenthesised arg" "(x) -> x"
+    (Lambda (["x"], Ident "x"));
+  check "lambda one arg trailing comma" "(x,) -> x"
+    (Lambda (["x"], Ident "x"));
+  check "lambda no args" "() -> 1"
+    (Lambda ([], Num "1"));
+  check "parenthesised sum" "(x + 1)"
+    (Add (Ident "x", Num "1"));
+  check "parenthesised projection" "(x.y)"
+    (Proj (Ident "x", "y"));
+  check_error "doubly parenthesised param" "((x)) -> x";
+  check_error "expression as param" "(x.y) -> x";
+  check_error "no tuples" "(x, y)";
   check "lambda many args" "(x, y) -> x"
     (Lambda (["x"; "y"], Ident "x"));
   check "lambda trailing comma" "(x, y,) -> y"
