@@ -4,9 +4,6 @@ module Unit_ast = Ast.Unit
 module Prod_parser = Parser.Make (Prod_ast)
 module Unit_parser = Parser.Make (Unit_ast)
 
-module Prod_lexer = Lexer.Make (Prod_parser)
-module Unit_lexer = Lexer.Make (Unit_parser)
-
 module Make_parse
   (P : sig
     type token
@@ -95,8 +92,8 @@ module Unit_parser_instance = struct
   type expr_result = Unit_ast.expr
 end
 
-module Prod_parse = Make_parse (Prod_parser_instance) (Prod_lexer)
-module Unit_parse = Make_parse (Unit_parser_instance) (Unit_lexer)
+module Prod_parse = Make_parse (Prod_parser_instance) (Lexer)
+module Unit_parse = Make_parse (Unit_parser_instance) (Lexer)
 
 let parse = Prod_parse.parse
 let parse_expr = Prod_parse.parse_expr

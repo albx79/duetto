@@ -10,25 +10,6 @@ let mk node start_pos end_pos =
 
 %parameter <A : Ast.S>
 
-%token <string> NUM
-%token <string> STRING
-%token <string> LABEL    (* 'name, without the quote *)
-%token <string> LIDENT   (* value names *)
-%token <string> UIDENT   (* type names *)
-%token <string> SPEC     (* spec keyword with its free-text title *)
-%token CASE SOME ENSURE DO
-%token ARROW EQEQ RESULT DOTDOT CONCAT
-%token PLUS
-%token MINUS
-%token TIMES
-%token DIV
-%token MOD
-%token EQUAL COLON COMMA DOT BAR QUESTION
-%token LPAREN
-%token RPAREN
-%token LBRACE RBRACE LBRACKET RBRACKET
-%token EOF
-
 %nonassoc below_RPAREN
 %nonassoc RPAREN
 %right ARROW

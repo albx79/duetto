@@ -1,7 +1,6 @@
-module P = Duetto.Parser.Make (Duetto.Ast.Unit)
-module L = Duetto.Lexer.Make (P)
+module L = Duetto.Lexer
 
-open P
+open Duetto.Tokens
 
 let show = function
   | NUM n -> Printf.sprintf "NUM %S" n
