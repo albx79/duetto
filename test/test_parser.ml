@@ -37,6 +37,7 @@ let check_error name src =
 
 let () =
   check "num literal" "42" (Num "42");
+  check "string literal" {|"hello"|} (String "hello");
   check "identifier" "x" (Ident "x");
   check "projection" "person.name"
     (Proj (Ident "person", "name"));
@@ -44,13 +45,18 @@ let () =
     (Proj (Proj (Ident "a", "b"), "c"));
   check "arithmetic" "1 + 2"
     (Add (Num "1", Num "2"));
+  check "concat identifiers" "a ++ b"
+    (Concat (Ident "a", Ident "b"));
+  check "concat projections" "person.name ++ suffix"
+    (Concat (Proj (Ident "person", "name"), Ident "suffix"));
   check "empty list" "[]"
     (List []);
-  check "list of expressions" "[1, x, person.name]"
+  check "list of expressions" "[1, x, person.name, \"ok\"]"
     (List [
       Num "1";
       Ident "x";
       Proj (Ident "person", "name");
+      String "ok";
     ]);
   check "nested lists" "[[], [1, 2]]"
     (List [

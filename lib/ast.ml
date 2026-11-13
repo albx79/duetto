@@ -66,11 +66,13 @@ module type S = sig
   and expr = expr_node wrapped
   and expr_node =
     | Num of string
+    | String of string
     | Ident of string
     | Proj of expr * string
     | Some_val of type_expr
     | Struct of struct_entry list
     | List of expr list
+    | Concat of expr * expr
     | Add of expr * expr
     | Sub of expr * expr
     | Mul of expr * expr
@@ -110,11 +112,13 @@ struct
   and expr = expr_node wrapped
   and expr_node =
     | Num of string
+    | String of string
     | Ident of string
     | Proj of expr * string
     | Some_val of type_expr
     | Struct of struct_entry list
     | List of expr list
+    | Concat of expr * expr
     | Add of expr * expr
     | Sub of expr * expr
     | Mul of expr * expr

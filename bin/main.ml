@@ -15,6 +15,8 @@ type parsed_expr =
 let rec eval (expr : A.expr) =
   match expr.node with
   | A.Num literal -> Atom (eval_num literal)
+  | A.String _ ->
+      failwith "Runtime evaluator does not support string values yet"
   | A.Ident name ->
       failwith (Printf.sprintf
         "Runtime evaluator does not support identifiers yet (%s)" name)
@@ -28,6 +30,8 @@ let rec eval (expr : A.expr) =
   | A.Struct fields -> Tree (List.map eval_field fields)
   | A.List _ ->
       failwith "Runtime evaluator does not support list values yet"
+  | A.Concat (_, _) ->
+      failwith "Runtime evaluator does not support ++ yet"
   | A.Add (a, b) ->
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a + b)

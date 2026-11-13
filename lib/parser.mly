@@ -29,7 +29,7 @@ let mk node start_pos end_pos =
 %token LBRACE RBRACE LBRACKET RBRACKET
 %token EOF
 
-%left PLUS MINUS
+%left PLUS MINUS CONCAT
 %left TIMES DIV MOD
 %left DOT
 
@@ -46,11 +46,13 @@ expr_main:
 
 expr:
     | NUM                  { mk (Num $1) $startpos $endpos }
+    | STRING               { mk (String $1) $startpos $endpos }
     | LIDENT               { mk (Ident $1) $startpos $endpos }
     | SOME LPAREN type_expr RPAREN { mk (Some_val $3) $startpos $endpos }
     | struct_expr          { $1 }
     | list_expr            { $1 }
     | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
+    | expr CONCAT expr     { mk (Concat ($1, $3)) $startpos $endpos }
     | expr PLUS expr       { mk (Add ($1, $3)) $startpos $endpos }
     | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }
     | expr TIMES expr      { mk (Mul ($1, $3)) $startpos $endpos }
