@@ -69,6 +69,7 @@ module type S = sig
     | String of string
     | Ident of string
     | Proj of expr * string
+    | Lambda of string list * expr
     | Some_val of type_expr
     | Struct of struct_entry list
     | List of expr list
@@ -115,6 +116,7 @@ struct
     | String of string
     | Ident of string
     | Proj of expr * string
+    | Lambda of string list * expr
     | Some_val of type_expr
     | Struct of struct_entry list
     | List of expr list

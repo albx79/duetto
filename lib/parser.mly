@@ -29,6 +29,7 @@ let mk node start_pos end_pos =
 %token LBRACE RBRACE LBRACKET RBRACKET
 %token EOF
 
+%right ARROW
 %left PLUS MINUS CONCAT
 %left TIMES DIV MOD
 %left DOT
@@ -47,6 +48,8 @@ expr_main:
 expr:
     | NUM                  { mk (Num $1) $startpos $endpos }
     | STRING               { mk (String $1) $startpos $endpos }
+    | LIDENT ARROW expr    { mk (Lambda ([$1], $3)) $startpos $endpos }
+    | LPAREN lambda_params RPAREN ARROW expr { mk (Lambda ($2, $5)) $startpos $endpos }
     | LIDENT               { mk (Ident $1) $startpos $endpos }
     | SOME LPAREN type_expr RPAREN { mk (Some_val $3) $startpos $endpos }
     | struct_expr          { $1 }
@@ -58,6 +61,14 @@ expr:
     | expr TIMES expr      { mk (Mul ($1, $3)) $startpos $endpos }
     | expr DIV expr        { mk (Div ($1, $3)) $startpos $endpos }
     | LPAREN expr RPAREN   { $2 }
+
+lambda_params:
+    | LIDENT lambda_params_tail { $1 :: $2 }
+
+lambda_params_tail:
+    | { [] }
+    | COMMA { [] }
+    | COMMA LIDENT lambda_params_tail { $2 :: $3 }
 
 list_expr:
     | LBRACKET list_items RBRACKET { mk (List $2) $startpos $endpos }

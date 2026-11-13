@@ -23,6 +23,8 @@ let rec eval (expr : A.expr) =
   | A.Proj (_, field) ->
       failwith (Printf.sprintf
         "Runtime evaluator does not support projection yet (. %s)" field)
+  | A.Lambda _ ->
+      failwith "Runtime evaluator does not support lambdas yet"
   | A.Some_val { node = A.Type_ident "Num"; _ } ->
       Atom (Random.int 100)
   | A.Some_val _ ->

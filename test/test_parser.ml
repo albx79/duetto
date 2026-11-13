@@ -39,6 +39,17 @@ let () =
   check "num literal" "42" (Num "42");
   check "string literal" {|"hello"|} (String "hello");
   check "identifier" "x" (Ident "x");
+  check "lambda one arg" "x -> x"
+    (Lambda (["x"], Ident "x"));
+  check "lambda many args" "(x, y) -> x"
+    (Lambda (["x"; "y"], Ident "x"));
+  check "lambda trailing comma" "(x, y,) -> y"
+    (Lambda (["x"; "y"], Ident "y"));
+  check "lambda body struct" "x -> { y = x, <<y }"
+    (Lambda (["x"], Struct [
+      Local ("y", Ident "x");
+      Result (Ident "y");
+    ]));
   check "projection" "person.name"
     (Proj (Ident "person", "name"));
   check "chained projection" "a.b.c"
