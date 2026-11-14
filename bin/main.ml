@@ -37,13 +37,18 @@ let rec eval (expr : A.expr) =
       failwith "Runtime evaluator does not support function calls yet"
   | A.Lambda _ ->
       failwith "Runtime evaluator does not support lambdas yet"
-  | A.Some_val { node = A.Type_ident "Num"; _ } ->
-      Atom (Random.int 100)
-  | A.Some_val _ ->
-      failwith "Runtime evaluator does not support some(...) yet"
+  | A.Some_val typ ->
+    let rec summon_value typ_desc = match typ.node with
+      | A.Type_ident "Num" -> Atom (Random.int 100)
+      | A.Type_ident _ -> failwith "Only numbers can be summoned"
+      | A.Type_apply _ -> failwith "Type application is not supported yet"
+      | A.Type_record fields ->
+        Tree (fields
+        |> List.map (fun (name, typ_dsc) -> (name, summon_value typ_dsc)))
+    in summon_value typ
   | A.Struct fields -> Tree (List.map eval_field fields)
-  | A.List _ ->
-      failwith "Runtime evaluator does not support list values yet"
+  | A.List entries ->
+    Tree (entries |> List.mapi (fun idx item -> (string_of_int idx, eval item)))
   | A.Concat (_, _) ->
       failwith "Runtime evaluator does not support ++ yet"
   | A.Eq (lhs, rhs) -> Atom (if atom_eq (eval lhs) (eval rhs) then 1 else 0)
