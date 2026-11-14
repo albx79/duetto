@@ -8,10 +8,19 @@ let eval_num literal =
       failwith (Printf.sprintf
         "Runtime numeric error: expected an integer literal, got %S" literal)
 
+
 type parsed_expr =
   | Atom of int
   | Tree of (string * parsed_expr) list
 [@@deriving show]
+
+let rec atom_eq a1 a2 = match (a1, a2) with
+  | (Atom n, Atom m) -> n == m
+  | (Tree fields1, Tree fields2) ->
+    let map1 = fields1 |> List.to_seq |> StrMap.of_seq in
+    let map2 = fields2 |> List.to_seq |> StrMap.of_seq in
+    StrMap.equal atom_eq map1 map2
+  | _ -> false
 
 let rec eval (expr : A.expr) =
   match expr.node with
@@ -37,17 +46,7 @@ let rec eval (expr : A.expr) =
       failwith "Runtime evaluator does not support list values yet"
   | A.Concat (_, _) ->
       failwith "Runtime evaluator does not support ++ yet"
-  | A.Eq (A.Num lit_l, A.Num list_r) ->
-      Atom (if (eval lit_l) == (eval lit_r) then 1 else 0)
-  | A.Eq (A.Struct fields_l, A.Struct fields_r) -> (
-    let l_fields_map: expr StrMap.t = StrMap.of_seq @@ List.to_seq fields_l in
-    let r_fields_map: expr StrMap.t = StrMap.of_seq @@ List.to_seq fields_r in
-    let are_eq = StrMap.equal (fun f1 f2 -> match (eval f1, eval f2) with
-      | (Atom n, Atom m) -> m == n
-      | _ -> false) l_fields_map r_fields_map in
-    if are_eq then Atom 1 else Atom 0
-      )
-
+  | A.Eq (lhs, rhs) -> Atom (if atom_eq (eval lhs) (eval rhs) then 1 else 0)
   | A.Add (a, b) ->
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a + b)
