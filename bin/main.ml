@@ -1,4 +1,5 @@
 module A = Duetto.Ast.Located
+module StrMap = Map.Make(String)
 
 let eval_num literal =
   match int_of_string_opt literal with
@@ -36,8 +37,17 @@ let rec eval (expr : A.expr) =
       failwith "Runtime evaluator does not support list values yet"
   | A.Concat (_, _) ->
       failwith "Runtime evaluator does not support ++ yet"
-  | A.Eq (_, _) ->
-      failwith "Runtime evaluator does not support == yet"
+  | A.Eq (A.Num lit_l, A.Num list_r) ->
+      Atom (if (eval lit_l) == (eval lit_r) then 1 else 0)
+  | A.Eq (A.Struct fields_l, A.Struct fields_r) -> (
+    let l_fields_map: expr StrMap.t = StrMap.of_seq @@ List.to_seq fields_l in
+    let r_fields_map: expr StrMap.t = StrMap.of_seq @@ List.to_seq fields_r in
+    let are_eq = StrMap.equal (fun f1 f2 -> match (eval f1, eval f2) with
+      | (Atom n, Atom m) -> m == n
+      | _ -> false) l_fields_map r_fields_map in
+    if are_eq then Atom 1 else Atom 0
+      )
+
   | A.Add (a, b) ->
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a + b)

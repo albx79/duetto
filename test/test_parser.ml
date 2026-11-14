@@ -133,6 +133,16 @@ let () =
     (Struct [Field ("ok", Eq (Ident "x", Ident "y"))]);
   check_error "equality is non-associative" "a == b == c";
   check_error "equality missing right operand" "a ==";
+  (* Newlines are not significant, so a parenthesised expression on the next
+     line is an argument: here the lambda's body is the call x(1). *)
+  check "newline before paren is a call" "x -> x\n(1)"
+    (Lambda (["x"], Call (Ident "x", [Num "1"])));
+  check "newline before paren in struct is a call" "{ a = f\n(x) }"
+    (Struct [Local ("a", Call (Ident "f", [Ident "x"]))]);
+  check "concat and addition share a level" "a ++ b + c"
+    (Add (Concat (Ident "a", Ident "b"), Ident "c"));
+  check "arrow is right-associative" "x -> y -> x"
+    (Lambda (["x"], Lambda (["y"], Ident "x")));
   check "empty list" "[]"
     (List []);
   check "list of expressions" "[1, x, person.name, \"ok\"]"

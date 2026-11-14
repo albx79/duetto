@@ -71,7 +71,7 @@ Entries are separated by commas, and a trailing comma is allowed. Newlines and i
 
 ### 3.2 Entries
 
-This grammar is descriptive, not formal.
+This grammar is descriptive, not formal. Operator precedence and associativity are those of the reference parser (`lib/parser.mly`).
 
 ```text
 File     ::= Entries
