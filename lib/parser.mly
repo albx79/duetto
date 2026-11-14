@@ -13,6 +13,7 @@ let mk node start_pos end_pos =
 %nonassoc below_RPAREN
 %nonassoc RPAREN
 %right ARROW
+%nonassoc EQEQ
 %left PLUS MINUS CONCAT
 %left TIMES DIV MOD
 %left DOT LPAREN
@@ -47,6 +48,7 @@ expr:
     | list_expr            { $1 }
     | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
     | expr LPAREN expr_items RPAREN { mk (Call ($1, $3)) $startpos $endpos }
+    | expr EQEQ expr       { mk (Eq ($1, $3)) $startpos $endpos }
     | expr CONCAT expr     { mk (Concat ($1, $3)) $startpos $endpos }
     | expr PLUS expr       { mk (Add ($1, $3)) $startpos $endpos }
     | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }

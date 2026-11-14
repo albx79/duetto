@@ -112,6 +112,27 @@ let () =
     ]);
   check_error "call lone comma" "f(,)";
   check_error "call missing close paren" "f(x";
+  check "equality" "x == 1"
+    (Eq (Ident "x", Num "1"));
+  check "equality binds looser than arithmetic" "a + 1 == b * 2"
+    (Eq (Add (Ident "a", Num "1"), Mul (Ident "b", Num "2")));
+  check "equality binds looser than concat" "a ++ b == c"
+    (Eq (Concat (Ident "a", Ident "b"), Ident "c"));
+  check "equality of calls and projections" "f(x).name == p.name"
+    (Eq (Proj (Call (Ident "f", [Ident "x"]), "name"), Proj (Ident "p", "name")));
+  check "equality in lambda body" "x -> x == 1"
+    (Lambda (["x"], Eq (Ident "x", Num "1")));
+  check "parenthesised equality" "(a == b) == c"
+    (Eq (Eq (Ident "a", Ident "b"), Ident "c"));
+  check "equality of lists" "calls(fs.read_text) == [\"settings.json\"]"
+    (Eq (Call (Ident "calls", [Proj (Ident "fs", "read_text")]),
+      List [String "settings.json"]));
+  check "equality as argument" "f(a == b)"
+    (Call (Ident "f", [Eq (Ident "a", Ident "b")]));
+  check "equality in struct" "{ ok: x == y }"
+    (Struct [Field ("ok", Eq (Ident "x", Ident "y"))]);
+  check_error "equality is non-associative" "a == b == c";
+  check_error "equality missing right operand" "a ==";
   check "empty list" "[]"
     (List []);
   check "list of expressions" "[1, x, person.name, \"ok\"]"

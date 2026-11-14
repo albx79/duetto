@@ -76,6 +76,7 @@ module Make (W : WRAP) = struct
     | Struct of struct_entry list
     | List of expr list
     | Concat of expr * expr
+    | Eq of expr * expr
     | Add of expr * expr
     | Sub of expr * expr
     | Mul of expr * expr

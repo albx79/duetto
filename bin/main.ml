@@ -36,6 +36,8 @@ let rec eval (expr : A.expr) =
       failwith "Runtime evaluator does not support list values yet"
   | A.Concat (_, _) ->
       failwith "Runtime evaluator does not support ++ yet"
+  | A.Eq (_, _) ->
+      failwith "Runtime evaluator does not support == yet"
   | A.Add (a, b) ->
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a + b)
