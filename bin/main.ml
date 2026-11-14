@@ -38,7 +38,7 @@ let rec eval (expr : A.expr) =
   | A.Lambda _ ->
       failwith "Runtime evaluator does not support lambdas yet"
   | A.Some_val typ ->
-    let rec summon_value typ_desc = match typ.node with
+    let rec summon_value (typ_desc : A.type_expr) = match typ_desc.node with
       | A.Type_ident "Num" -> Atom (Random.int 100)
       | A.Type_ident _ -> failwith "Only numbers can be summoned"
       | A.Type_apply _ -> failwith "Type application is not supported yet"
