@@ -1,0 +1,32 @@
+spec A1 {
+    x = answer(),
+    ensure x == 42
+},
+
+spec A2 {
+    x = greet({ name: "Ada" }),
+    ensure x == "Hello, Ada"
+},
+
+spec A5 {
+    ensure identity(5) == 5
+},
+
+spec A9 {
+    ensure empty() == []
+},
+
+spec A14 P {
+    ensure load_settings("p").theme == "dark"
+},
+
+spec A14 Q {
+    ensure load_settings("q") == {
+        theme: "light", size: 12
+    }
+},
+
+spec A15 {
+    ensure divmod(7, 2).div == 3,
+    ensure divmod(7, 2).mod == 1,
+},
