@@ -11,11 +11,13 @@ let eval_num literal =
 
 type parsed_expr =
   | Atom of int
+  | Label of string
   | Tree of (string * parsed_expr) list
 [@@deriving show]
 
 let rec atom_eq a1 a2 = match (a1, a2) with
-  | (Atom n, Atom m) -> n == m
+  | (Atom n, Atom m) -> n = m
+  | (Label l, Label m) -> l = m
   | (Tree fields1, Tree fields2) ->
     let map1 = fields1 |> List.to_seq |> StrMap.of_seq in
     let map2 = fields2 |> List.to_seq |> StrMap.of_seq in
@@ -51,7 +53,28 @@ let rec eval (expr : A.expr) =
     Tree (entries |> List.mapi (fun idx item -> (string_of_int idx, eval item)))
   | A.Concat (_, _) ->
       failwith "Runtime evaluator does not support ++ yet"
-  | A.Eq (lhs, rhs) -> Atom (if atom_eq (eval lhs) (eval rhs) then 1 else 0)
+  | A.Eq (lhs, rhs) -> Label (if atom_eq (eval lhs) (eval rhs) then "true" else "false")
+  | A.Label l -> Label l
+  | A.Case (scrutinee, branches) ->
+      let value = eval scrutinee in
+      let has_fields fields =
+        match value with
+        | Tree entries -> List.for_all (fun f -> List.mem_assoc f entries) fields
+        | _ -> false
+      in
+      let matches (pattern : A.pattern) =
+        match pattern.node, value with
+        | A.Label_pattern l, Label m -> l = m
+        | A.Record_pattern fields, Tree entries ->
+            has_fields fields && List.length fields = List.length entries
+        | A.Open_record_pattern fields, Tree _ -> has_fields fields
+        | _ -> false
+      in
+      (* Record patterns bind their fields, which this evaluator cannot use
+         yet, since it has no identifiers. *)
+      (match List.find_opt (fun (b : A.case_branch) -> matches b.pattern) branches with
+      | Some branch -> eval branch.body
+      | None -> failwith "case: no branch matches the value")
   | A.Add (a, b) ->
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a + b)
@@ -76,8 +99,8 @@ and eval_field (entry : A.struct_entry) =
   | A.Ensure e ->
       let pos = entry.loc.start_pos in
       (match eval e with
-      | Atom 1 -> None
-      | Atom 0 ->
+      | Label "true" -> None
+      | Label "false" ->
           failwith (Printf.sprintf "ensure failed at %d:%d" pos.line pos.column)
       | _ ->
           failwith (Printf.sprintf

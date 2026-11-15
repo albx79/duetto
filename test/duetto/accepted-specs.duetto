@@ -30,3 +30,25 @@ spec A15 {
     ensure divmod(7, 2).div == 3,
     ensure divmod(7, 2).mod == 1,
 },
+
+spec A6 {
+    ensure f('true) == 1,
+    ensure f('false) == 0,
+},
+
+spec A11 {
+    x = 'a,
+    y = case x { 'a -> 1, 'b -> 2 },
+    ensure f(x) == 1,
+},
+
+spec A12 {
+    ensure same(1, 1) == 'true,
+    ensure same(1, 2) == 'false,
+},
+
+spec A13 {
+    c = mk(),
+    ensure c.compare(1, 1) == 'eq,
+    ensure c.compare(1, 2) == 'lt,
+},

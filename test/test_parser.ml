@@ -61,7 +61,76 @@ let check_file_error name src expected =
           name expected actual
       end
 
+(* Files under test/duetto that must parse. *)
+let check_accepted_file path =
+  let ic = open_in_bin path in
+  let src = really_input_string ic (in_channel_length ic) in
+  close_in ic;
+  let lexbuf = Lexing.from_string src in
+  Lexing.set_filename lexbuf path;
+  match Duetto.Parse.parse_unit lexbuf with
+  | _ -> ()
+  | exception Duetto.Diagnostic.Error e ->
+      incr failures;
+      Printf.printf "FAIL %s\n  expected parse success\n  actual error: %s\n" path
+        (Duetto.Diagnostic.string_of_error e)
+
 let () =
+  check_accepted_file "duetto/accepted-specs.duetto";
+  check "label" "'eq" (Label "eq");
+  check "label comparison" "f(x) == 'lt" (Eq (Call (Ident "f", [Ident "x"]), Label "lt"));
+  check "case on labels" "case r { 'lt -> \"less\", 'eq -> \"equal\", 'gt -> \"greater\" }"
+    (Case (Ident "r", [
+      { pattern = Label_pattern "lt"; body = String "less" };
+      { pattern = Label_pattern "eq"; body = String "equal" };
+      { pattern = Label_pattern "gt"; body = String "greater" };
+    ]));
+  check "case trailing comma" "case x { 'a -> 1, }"
+    (Case (Ident "x", [{ pattern = Label_pattern "a"; body = Num "1" }]));
+  check "case on a comparison" "case a == b { 'true -> 'eq, 'false -> 'lt }"
+    (Case (Eq (Ident "a", Ident "b"), [
+      { pattern = Label_pattern "true"; body = Label "eq" };
+      { pattern = Label_pattern "false"; body = Label "lt" };
+    ]));
+  check "case on records" "case e { { num } -> num, { add } -> eval(add.l) + eval(add.r) }"
+    (Case (Ident "e", [
+      { pattern = Record_pattern ["num"]; body = Ident "num" };
+      { pattern = Record_pattern ["add"];
+        body = Add (Call (Ident "eval", [Proj (Ident "add", "l")]),
+                    Call (Ident "eval", [Proj (Ident "add", "r")])) };
+    ]));
+  check "record patterns" "case r { {} -> 0, { a, b } -> 1, { a, } -> 2, { a, b, .. } -> 3, { .. } -> 4 }"
+    (Case (Ident "r", [
+      { pattern = Record_pattern []; body = Num "0" };
+      { pattern = Record_pattern ["a"; "b"]; body = Num "1" };
+      { pattern = Record_pattern ["a"]; body = Num "2" };
+      { pattern = Open_record_pattern ["a"; "b"]; body = Num "3" };
+      { pattern = Open_record_pattern []; body = Num "4" };
+    ]));
+  check "case branch with a block" "case x { 'a -> { y = 1, <<y } }"
+    (Case (Ident "x", [
+      { pattern = Label_pattern "a"; body = Struct [Local ("y", Num "1"); Result (Ident "y")] };
+    ]));
+  check "case branch with a lambda" "case x { 'a -> y -> y }"
+    (Case (Ident "x", [
+      { pattern = Label_pattern "a"; body = Lambda (["y"], Ident "y") };
+    ]));
+  check "nested case" "case x { 'a -> case y { 'b -> 1 }, 'c -> 2 }"
+    (Case (Ident "x", [
+      { pattern = Label_pattern "a";
+        body = Case (Ident "y", [{ pattern = Label_pattern "b"; body = Num "1" }]) };
+      { pattern = Label_pattern "c"; body = Num "2" };
+    ]));
+  check "case is an expression" "case x { 'a -> 1 } + 1"
+    (Add (Case (Ident "x", [{ pattern = Label_pattern "a"; body = Num "1" }]), Num "1"));
+  check_error "case needs a branch" "case x {}";
+  check_error "case needs braces" "case x 'a -> 1";
+  check_error "pattern is not an expression" "case x { y -> 1 }";
+  check_error "open pattern ends with .." "case x { { .., a } -> 1 }";
+  check_error "no comma after .." "case x { { a, .., } -> 1 }";
+  check_error "no field values in patterns" "case x { { a: 1 } -> 1 }";
+  check_error "branches need commas" "case x { 'a -> 1 'b -> 2 }";
+
   check_file "spec" "spec it works { ensure f(1) == 2 }"
     (Struct [Spec ("it works", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "2"))])]);
   check_file "spec with locals" "spec adds { x = f(1), y = x + 1, ensure y == 3, }"

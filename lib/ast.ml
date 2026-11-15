@@ -68,10 +68,26 @@ module Make (W : WRAP) = struct
        ensures only (spec, section 7). *)
     | Spec of string * struct_entry list
 
+  (* A branch of a case (spec, sections 6.3 and 9). *)
+  and case_branch = {
+    pattern : pattern;
+    body : expr;
+  }
+
+  and pattern = pattern_node wrapped
+  and pattern_node =
+    | Label_pattern of string
+    (* { a, b }: matches only the member whose fields are exactly these. *)
+    | Record_pattern of string list
+    (* { a, b, .. }: matches every member that has these fields. *)
+    | Open_record_pattern of string list
+
   and expr = expr_node wrapped
   and expr_node =
     | Num of string
     | String of string
+    | Label of string
+    | Case of expr * case_branch list
     | Ident of string
     | Proj of expr * string
     | Call of expr * expr list

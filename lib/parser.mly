@@ -32,6 +32,9 @@ expr_main:
 expr:
     | NUM                  { mk (Num $1) $startpos $endpos }
     | STRING               { mk (String $1) $startpos $endpos }
+    | LABEL                { mk (Label $1) $startpos $endpos }
+    | CASE expr LBRACE case_branches RBRACE
+        { mk (Case ($2, $4)) $startpos $endpos }
     | LIDENT ARROW expr    { mk (Lambda ([$1], $3)) $startpos $endpos }
     | LPAREN RPAREN ARROW expr { mk (Lambda ([], $4)) $startpos $endpos }
     | LPAREN LIDENT RPAREN ARROW expr { mk (Lambda ([$2], $5)) $startpos $endpos }
@@ -55,6 +58,31 @@ expr:
     | expr TIMES expr      { mk (Mul ($1, $3)) $startpos $endpos }
     | expr DIV expr        { mk (Div ($1, $3)) $startpos $endpos }
     | LPAREN expr RPAREN   { $2 }
+
+(* At least one branch, comma-separated, with an optional trailing comma. *)
+case_branches:
+    | case_branch { [$1] }
+    | case_branch COMMA { [$1] }
+    | case_branch COMMA case_branches { $1 :: $3 }
+
+case_branch:
+    | pattern ARROW expr { { pattern = $1; body = $3 } }
+
+pattern:
+    | LABEL { mk (Label_pattern $1) $startpos $endpos }
+    | LBRACE record_pattern_body RBRACE
+        { let (fields, is_open) = $2 in
+          mk (if is_open then Open_record_pattern fields else Record_pattern fields)
+            $startpos $endpos }
+
+(* Field names, comma-separated, optionally ending with "..", which makes the
+   pattern open; a trailing comma is allowed when there is no "..". *)
+record_pattern_body:
+    | { ([], false) }
+    | DOTDOT { ([], true) }
+    | LIDENT { ([$1], false) }
+    | LIDENT COMMA record_pattern_body
+        { let (fields, is_open) = $3 in ($1 :: fields, is_open) }
 
 lambda_params_rest:
     | { [] }
