@@ -35,7 +35,66 @@ let check_error name src =
   | exception Duetto.Diagnostic.Error _ ->
       ()
 
+let check_file name src expected =
+  match Duetto.Parse.parse_unit (Lexing.from_string src) with
+  | actual when actual = expected -> ()
+  | actual ->
+      incr failures;
+      Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name
+        (show_expr expected)
+        (show_expr actual)
+  | exception Duetto.Diagnostic.Error e ->
+      incr failures;
+      Printf.printf "FAIL %s\n  expected parse success\n  actual error: %s\n" name
+        (Duetto.Diagnostic.string_of_error e)
+
+let check_file_error name src expected =
+  match Duetto.Parse.parse_unit (Lexing.from_string src) with
+  | _ ->
+      incr failures;
+      Printf.printf "FAIL %s\n  expected parse error\n  actual: parse succeeded\n" name
+  | exception Duetto.Diagnostic.Error e ->
+      let actual = Duetto.Diagnostic.string_of_error e in
+      if expected <> "" && actual <> expected then begin
+        incr failures;
+        Printf.printf "FAIL %s\n  expected error: %s\n  actual error:   %s\n"
+          name expected actual
+      end
+
 let () =
+  check_file "spec" "spec it works { ensure f(1) == 2 }"
+    (Struct [Spec ("it works", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "2"))])]);
+  check_file "spec with locals" "spec adds { x = f(1), y = x + 1, ensure y == 3, }"
+    (Struct [
+      Spec ("adds", [
+        Local ("x", Call (Ident "f", [Num "1"]));
+        Local ("y", Add (Ident "x", Num "1"));
+        Ensure (Eq (Ident "y", Num "3"));
+      ]);
+    ]);
+  check_file "empty spec" "spec nothing yet {}" (Struct [Spec ("nothing yet", [])]);
+  check_file "specs among fields" "f: x -> x,\nspec identity { ensure f(1) == 1 },\ng: 2,"
+    (Struct [
+      Field ("f", Lambda (["x"], Ident "x"));
+      Spec ("identity", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "1"))]);
+      Field ("g", Num "2");
+    ]);
+  check_file "spec with nested struct" "spec s { r = { a: 1 }, ensure r.a == 1 }"
+    (Struct [
+      Spec ("s", [
+        Local ("r", Struct [Field ("a", Num "1")]);
+        Ensure (Eq (Proj (Ident "r", "a"), Num "1"));
+      ]);
+    ]);
+  check_file_error "spec in a nested struct" "m: {\n  spec inner { ensure 1 == 1 }\n}"
+    "The spec 'inner' at :2:3 is inside a nested struct; specs are allowed only at file level";
+  check_file_error "spec in a lambda body" "f: x -> { spec inner {}, <<x }"
+    "The spec 'inner' at :1:11 is inside a nested struct; specs are allowed only at file level";
+  check_file_error "spec has no fields" "spec s { a: 1 }" "";
+  check_file_error "spec has no result" "spec s { <<1 }" "";
+  check_file_error "spec needs commas" "spec s { ensure a ensure b }" "";
+  check_error "spec is not an expression" "spec s {}";
+
   check "num literal" "42" (Num "42");
   check "string literal" {|"hello"|} (String "hello");
   check "identifier" "x" (Ident "x");
@@ -221,6 +280,30 @@ let () =
       Result (Ident "x");
     ]);
 
+  check "ensure" "{ ensure x == 1 }"
+    (Struct [Ensure (Eq (Ident "x", Num "1"))]);
+  check "ensure among entries" "{ x = f(1), ensure x == 2, ensure g(x), <<x }"
+    (Struct [
+      Local ("x", Call (Ident "f", [Num "1"]));
+      Ensure (Eq (Ident "x", Num "2"));
+      Ensure (Call (Ident "g", [Ident "x"]));
+      Result (Ident "x");
+    ]);
+  check "ensure trailing comma" "{ ensure a == b, }"
+    (Struct [Ensure (Eq (Ident "a", Ident "b"))]);
+  check "ensure with lambda and calls" "{ ensure map(xs, x -> x + 1) == [2, 3] }"
+    (Struct [
+      Ensure (Eq (
+        Call (Ident "map", [Ident "xs"; Lambda (["x"], Add (Ident "x", Num "1"))]),
+        List [Num "2"; Num "3"]));
+    ]);
+  check "ensure on a struct" "{ ensure f(x) == { ok: 1 } }"
+    (Struct [
+      Ensure (Eq (Call (Ident "f", [Ident "x"]), Struct [Field ("ok", Num "1")]));
+    ]);
+  check_error "ensure needs an expression" "{ ensure }";
+  check_error "ensure is not a name" "{ ensure: 1 }";
+  check_error "ensure takes one expression" "{ ensure x y }";
   check_error "result must be last" "{ <<x, y = 1 }";
   check_error "result must be last with fields" "{ a: 1, <<a, b: 2 }";
   check_error "missing colon" "{ answer 42 }";

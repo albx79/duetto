@@ -46,7 +46,7 @@ let rec eval (expr : A.expr) =
         Tree (fields
         |> List.map (fun (name, typ_dsc) -> (name, summon_value typ_dsc)))
     in summon_value typ
-  | A.Struct fields -> Tree (List.map eval_field fields)
+  | A.Struct fields -> Tree (List.filter_map eval_field fields)
   | A.List entries ->
     Tree (entries |> List.mapi (fun idx item -> (string_of_int idx, eval item)))
   | A.Concat (_, _) ->
@@ -71,8 +71,24 @@ let rec eval (expr : A.expr) =
 
 and eval_field (entry : A.struct_entry) =
   match entry.node with
-  | A.Field (s, e) -> (s, eval e)
-  | A.Local (s, e) -> (s, eval e)
+  | A.Field (s, e) -> Some (s, eval e)
+  | A.Local (s, e) -> Some (s, eval e)
+  | A.Ensure e ->
+      let pos = entry.loc.start_pos in
+      (match eval e with
+      | Atom 1 -> None
+      | Atom 0 ->
+          failwith (Printf.sprintf "ensure failed at %d:%d" pos.line pos.column)
+      | _ ->
+          failwith (Printf.sprintf
+            "ensure at %d:%d needs a true or false condition" pos.line pos.column))
+  | A.Spec (title, body) ->
+      (* Run the spec now: its locals and ensures, in order. A spec adds no
+         field to the struct. *)
+      (try List.iter (fun entry -> ignore (eval_field entry)) body
+       with Failure message ->
+         failwith (Printf.sprintf "spec '%s': %s" title message));
+      None
   | A.Result _ ->
       failwith "Results are not supported"
 

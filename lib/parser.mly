@@ -24,7 +24,7 @@ let mk node start_pos end_pos =
 %%
 
 main:
-    struct_body EOF { mk (Struct $1) $startpos $endpos }
+    file_body EOF { mk (Struct $1) $startpos $endpos }
 
 expr_main:
     expr EOF { $1 }
@@ -76,17 +76,56 @@ expr_item_rest:
 struct_expr:
     | LBRACE struct_body RBRACE { mk (Struct $2) $startpos $endpos }
 
+(* A file is a struct whose entries may also be specs; specs are allowed
+   only there (spec, section 7). *)
+file_body:
+    | entries(file_entry) { $1 }
+
 struct_body:
+    | entries(struct_entry) { $1 }
+
+(* Comma-separated entries, with an optional trailing comma, and at most one
+   result, which must come last. *)
+entries(entry):
     | { [] }
     | result_entry opt_comma { [$1] }
-    | nonresult_entry nonresult_tail { $1 :: $2 }
+    | entry entries_tail(entry) { $1 :: $2 }
 
-nonresult_tail:
+entries_tail(entry):
     | { [] }
     | COMMA { [] }
-    | COMMA nonresult_entry nonresult_tail { $2 :: $3 }
+    | COMMA entry entries_tail(entry) { $2 :: $3 }
     | COMMA result_entry { [$2] }
     | COMMA result_entry COMMA { [$2] }
+
+file_entry:
+    | nonresult_entry { $1 }
+    | SPEC LBRACE spec_body RBRACE { mk (Spec ($1, $3)) $startpos $endpos }
+
+(* A spec in a nested struct is parsed, so that the error can say what is
+   wrong instead of reporting an unexpected token. *)
+struct_entry:
+    | nonresult_entry { $1 }
+    | SPEC LBRACE spec_body RBRACE
+        { raise (Diagnostic.Error (Diagnostic.Nested_spec {
+            title = $1;
+            position = {
+              Diagnostic.filename = $startpos.pos_fname;
+              line = $startpos.pos_lnum;
+              column = $startpos.pos_cnum - $startpos.pos_bol + 1;
+            };
+          })) }
+
+(* A spec's body: locals and ensures, comma-separated, with an optional
+   trailing comma. *)
+spec_body:
+    | { [] }
+    | spec_entry { [$1] }
+    | spec_entry COMMA spec_body { $1 :: $3 }
+
+spec_entry:
+    | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
+    | ENSURE expr { mk (Ensure $2) $startpos $endpos }
 
 opt_comma:
     | { () }
@@ -95,6 +134,8 @@ opt_comma:
 nonresult_entry:
     | LIDENT COLON expr { mk (Field ($1, $3)) $startpos $endpos }
     | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
+    (* Allowed in any block (spec, section 7.1). *)
+    | ENSURE expr { mk (Ensure $2) $startpos $endpos }
 
 result_entry:
     | RESULT expr { mk (Result $2) $startpos $endpos }

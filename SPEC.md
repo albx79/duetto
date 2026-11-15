@@ -36,6 +36,7 @@ Specs serve three purposes at once:
 - **One spec supplies the signature**: label sets, the fields of record results, and union members are joined only within one spec, and other specs must be included in it. Labels are no longer joined across specs (sections 12.2 to 12.4).
 - **A value is catalogued only if its behavior comes from production code**: it is bound in a spec, function-carrying, concrete, and every closure it reaches was written in production code. Values reaching a spec closure or a double are fixtures, so recipes never contain doubles. Recipes are limited by depth, not by rounds, and laws apply to every value usable as their interface.
 - **Law specs with no subject are vacuous**, and do not prevent a pass.
+- **`ensure` works in any block**, as an assertion checked during whole-program testing and erased in production. Treating an `ensure` that mentions only its function's parameters as a precondition is under design (section 7.1).
 - **Specs appear only at file level**, and capabilities originate at the program's entry point, which receives exactly the root capabilities its signature names.
 
 ## 2. Design goals
@@ -84,7 +85,7 @@ Entry    ::= name ":" Expr             -- field
            | TypeName TypeParams? ":" TypeExpr   -- public type
            | TypeName TypeParams? "=" TypeExpr   -- private type
            | spec SpecTitle Struct     -- file level only (section 7)
-           | ensure Expr               -- spec bodies only
+           | ensure Expr               -- any block; checked in tests (section 7.1)
            | do Expr                   -- an effect; Expr : {}
            | "<<" Expr                 -- block result; last entry
 ```
@@ -167,7 +168,13 @@ f_res is used before it is initialized:
 
 ### 3.6 Spec entries
 
-A spec entry is `spec`, a title, and a struct. The title is part of the grammar, not a string literal: free text up to the opening `{`, so it cannot contain braces. Like everything else, it is not sensitive to newlines: a title may span lines, and its surrounding whitespace is trimmed. Names in backticks are identifiers that mark a law (section 10.9).
+A spec entry is `spec`, a title, and a struct. The title is part of the grammar, not a string literal, so it is never an expression: no `++`, no constants. It is free text up to the opening `{`, under these rules (decided):
+
+- It may contain any character except `{`, `}` and `` ` ``. A `}` in a title is an error, which also catches a title whose `{` is missing. Backticks are reserved for marking the interfaces of law specs (section 10.9).
+- `#` in a title is text, not the start of a comment.
+- Brackets need not balance, so a title can describe a half-open range such as `[0, 1)`. Tools should treat the whole title as one text token, as they treat strings and comments.
+- Like everything else, it is not sensitive to newlines: every run of whitespace, newlines included, counts as one space, and leading and trailing whitespace is removed.
+- It must not be empty.
 
 ### 3.7 Comments
 
@@ -416,6 +423,30 @@ Spec entries appear only at **file level**, directly in a module's struct. A spe
 ensure x == 42,
 ensure ord.compare(a, b) == 'lt,
 ```
+
+**Outside specs (decided).** `ensure` may appear in any block, not only in spec bodies: in a function body, in a nested struct, or at file level. There it is an assertion. It is checked whenever whole-program testing evaluates it, and it is **erased in production runs**. Erasing it is safe because expressions are pure: removing an `ensure` cannot change what a program computes, only whether a violated condition is reported. Outside specs, an `ensure` is checked like any other production expression and contributes nothing to extraction.
+
+**Preconditions (under design).** This part is a working proposal, not a decision; its open points are listed in section 13.1. An `ensure` in a lambda's body is a **precondition** of that lambda when its expression mentions only the lambda's own parameters and file-level names, such as other fields. Any other `ensure` outside a spec, one that mentions a local of the body or a name captured from an enclosing lambda, is an **assertion** about the function's own computation:
+
+```duetto
+average: xs -> {
+  ensure is_empty(xs) == 'false,   # precondition: mentions only xs and a field
+  n = length(xs),
+  ensure is_zero(n) == 'false,     # assertion: mentions a local
+  <<sum(xs) / n
+},
+```
+
+The rule is syntactic on purpose. In a pure function every local is computed from the parameters, so "depends only on the inputs" would make every `ensure` a precondition; what the rule distinguishes is a statement about the inputs **as given**. The second `ensure` above is therefore an assertion, although it says the same as the first; to make a condition a precondition, state it in terms of the parameters.
+
+The difference is **who is at fault** when the condition is false:
+
+- **A failed precondition blames the caller.** If the caller is a spec and the arguments came from `some`, the generated case is **discarded**, not failed, as with QuickCheck's `==>`. If the spec wrote the arguments itself, the spec fails. If the caller is production code, the failure is reported at the call site, as a bug in the caller.
+- **A failed assertion blames the function** that contains it, and is reported there, together with the spec whose run reached it.
+
+A spec all of whose generated cases are discarded has checked nothing, and is reported. How discards interact with law specs is open (section 13.1).
+
+**Inside specs** there are no preconditions. Every `ensure` in a spec, at any depth, including one in the body of a lambda the spec defines as a local helper, is a spec obligation: if it is false, the spec fails.
 
 ### 7.2 `some(T)`
 
@@ -846,6 +877,9 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 ### 13.1 Open questions
 
 - **Choice data.** Tagged unions are not adopted. Struct unions (section 9) take their place, and section 13.4 plans the rest.
+- **Preconditions** (section 7.1). The whole precondition rule is under design: the syntactic test, the blame rules, and discarding. The two items below are open points within it.
+- **Preconditions in law specs** (section 7.1). An implementation could escape a law by a precondition that rejects the summoned values the law is checked with. The options: (1) discard as in other specs, and report a law spec whose cases were all discarded, as for any spec; (2) also report every discard in a law spec, since a law should hold for every value of the interface's type; (3) treat a precondition that fails in a law spec as a failure of the law. Recommendation: (1) for now, since it is the general rule, with discard counts shown in the report so that a law checked mostly on rejected inputs is visible.
+- **Generating inputs that satisfy preconditions.** Discarding wastes generated cases when a precondition rejects most of them. A later step could use preconditions to guide `some` (section 7.4).
 - **Evaluation cost.** Re-running specs for each newly catalogued type can grow quickly. The depth limit may need a companion cap on instantiations per consumer spec, or sampling.
 - **Division by zero** (section 6.6). The options:
   1. **Total arithmetic**: `a / 0 = 0` and `a % 0 = a`, as in Lean and Pony. `/` stays an ordinary operator, but a missing check silently gives a wrong number.

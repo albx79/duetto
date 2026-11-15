@@ -62,7 +62,11 @@ module Make (W : WRAP) = struct
   and struct_entry_node =
     | Field of string * expr
     | Local of string * expr
+    | Ensure of expr
     | Result of expr
+    (* A spec entry: its title and its body's entries, which are locals and
+       ensures only (spec, section 7). *)
+    | Spec of string * struct_entry list
 
   and expr = expr_node wrapped
   and expr_node =

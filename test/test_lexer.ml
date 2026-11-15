@@ -72,7 +72,13 @@ let () =
   check "spec title" "spec the answer is 42 {\n  ensure x == 42,\n}"
     [ SPEC "the answer is 42"; LBRACE; ENSURE; LIDENT "x"; EQEQ; NUM "42";
       COMMA; RBRACE ];
-  check "spec without title" "spec{}" [ SPEC ""; LBRACE; RBRACE ];
+  check "spec title whitespace is normalised" "spec  a\t b\n\n  c  {}"
+    [ SPEC "a b c"; LBRACE; RBRACE ];
+  check "spec title keeps # and unbalanced brackets"
+    "spec [0, 1) is half-open # not a comment {}"
+    [ SPEC "[0, 1) is half-open # not a comment"; LBRACE; RBRACE ];
+  check "spec title keeps quotes and labels" "spec it's \"quoted\" 'eq {}"
+    [ SPEC "it's \"quoted\" 'eq"; LBRACE; RBRACE ];
   check "spec prefix is an identifier" "specs" [ LIDENT "specs" ];
   check "rigid row" "some({ name: String, ..?R })"
     [ SOME; LPAREN; LBRACE; LIDENT "name"; COLON; UIDENT "String"; COMMA;
@@ -105,5 +111,15 @@ let () =
     "Unexpected character '@' at :2:3";
   check_error "line after multi-line title" "spec a\nb\n{ }\n  !"
     "Unexpected character '!' at :4:3";
+  check_error "spec without title" "spec{}"
+    "The spec at :1:1 has no title";
+  check_error "spec with blank title" "spec \n  {}"
+    "The spec at :1:1 has no title";
+  check_error "closing brace in spec title" "x = 1,\nspec a } b {}"
+    "A spec title cannot contain '}', at :2:8 (is the '{' after the title missing?)";
+  check_error "missing brace after spec title" "spec a\n  ensure x == 1,\n}"
+    "A spec title cannot contain '}', at :3:1 (is the '{' after the title missing?)";
+  check_error "backtick in spec title" "spec laws of `Ordering` {}"
+    "A spec title cannot contain '`', at :1:14";
 
   if !failures > 0 then exit 1 else print_endline "lexer tests passed"

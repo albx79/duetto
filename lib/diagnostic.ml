@@ -28,6 +28,17 @@ type error =
       token: string;
       position: position;
     }
+  | Invalid_spec_title_character of {
+      character: string;
+      position: position;
+    }
+  | Missing_spec_title of {
+      position: position;
+    }
+  | Nested_spec of {
+      title: string;
+      position: position;
+    }
 
 exception Error of error
 
@@ -62,4 +73,22 @@ let string_of_error = function
   | Reserved_token { token; position } ->
       Printf.sprintf "The token '%s' at %s is reserved for future use"
         token (string_of_position position)
+
+  | Invalid_spec_title_character { character = "}"; position } ->
+      Printf.sprintf
+        "A spec title cannot contain '}', at %s (is the '{' after the title missing?)"
+        (string_of_position position)
+
+  | Invalid_spec_title_character { character; position } ->
+      Printf.sprintf "A spec title cannot contain '%s', at %s"
+        character (string_of_position position)
+
+  | Nested_spec { title; position } ->
+      Printf.sprintf
+        "The spec '%s' at %s is inside a nested struct; specs are allowed only at file level"
+        title (string_of_position position)
+
+  | Missing_spec_title { position } ->
+      Printf.sprintf "The spec at %s has no title"
+        (string_of_position position)
 

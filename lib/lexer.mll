@@ -19,6 +19,43 @@ let keyword_or_ident = function
 (* Advance the line counter past every newline in [text], which was just
    matched in one lexeme. [Lexing.new_line] only handles a lexeme that ends
    with the newline. *)
+(* The position of the character at [offset] in the current lexeme. *)
+let position_in_lexeme lexbuf offset : Diagnostic.position =
+  let start = Lexing.lexeme_start_p lexbuf in
+  let text = Lexing.lexeme lexbuf in
+  let line = ref start.pos_lnum and bol = ref start.pos_bol in
+  for i = 0 to offset - 1 do
+    if text.[i] = '\n' then begin
+      incr line;
+      bol := start.pos_cnum + i + 1
+    end
+  done;
+  { filename = start.pos_fname;
+    line = !line;
+    column = start.pos_cnum + offset - !bol + 1 }
+
+(* A spec title (spec, section 3.6): reject '}' and backticks, collapse every
+   run of whitespace to one space, trim, and require it to be non-empty.
+   [title] starts at [offset] in the current lexeme. *)
+let spec_title lexbuf offset title =
+  String.iteri (fun i c ->
+    if c = '}' || c = '`' then
+      error (Diagnostic.Invalid_spec_title_character {
+        character = String.make 1 c;
+        position = position_in_lexeme lexbuf (offset + i);
+      }))
+    title;
+  let words =
+    String.split_on_char ' '
+      (String.map (function '\t' | '\r' | '\n' -> ' ' | c -> c) title)
+    |> List.filter (fun w -> w <> "")
+  in
+  if words = [] then
+    error (Diagnostic.Missing_spec_title {
+      position = position_of (Lexing.lexeme_start_p lexbuf);
+    });
+  String.concat " " words
+
 let skip_newlines lexbuf text =
   let start = Lexing.lexeme_start_p lexbuf in
   String.iteri (fun i c ->
@@ -57,10 +94,15 @@ rule token = parse
 
   (* A spec title is free text up to the opening brace (spec, section 3.6). *)
   | "spec" ([' ' '\t' '\r' '\n'] [^ '{']* as title) {
-      skip_newlines lexbuf title;
-      SPEC (String.trim title)
+      let title = spec_title lexbuf 4 title in
+      skip_newlines lexbuf (Lexing.lexeme lexbuf);
+      SPEC title
     }
-  | "spec" { SPEC "" }
+  | "spec" {
+      error (Diagnostic.Missing_spec_title {
+        position = position_of (Lexing.lexeme_start_p lexbuf);
+      })
+    }
 
   | number as n { NUM n }
   | '"' {
