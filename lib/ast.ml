@@ -66,6 +66,7 @@ module Make (W : WRAP) = struct
     | Field of string * expr
     | Local of string * expr
     | Ensure of expr
+    | Do of expr
     | Result of expr
     (* A spec entry: its title and its body's entries, which are locals and
        ensures only (spec, section 7). *)
@@ -104,6 +105,7 @@ module Make (W : WRAP) = struct
     | Sub of expr * expr
     | Mul of expr * expr
     | Div of expr * expr
+    | Mod of expr * expr
   [@@deriving show]
 
   let with_loc = W.wrap

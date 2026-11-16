@@ -93,6 +93,10 @@ let rec eval (expr : A.expr) =
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a / b)
       | _ -> failwith "can only divide atoms")
+  | A.Mod (a, b) ->
+      (match (eval a, eval b) with
+      | (Atom a, Atom b) -> Atom (a mod b)
+      | _ -> failwith "can only mod atoms")
 
 and eval_field (entry : A.struct_entry) =
   match entry.node with
@@ -107,6 +111,8 @@ and eval_field (entry : A.struct_entry) =
       | _ ->
           failwith (Printf.sprintf
             "ensure at %d:%d needs a true or false condition" pos.line pos.column))
+  | A.Do _ ->
+      failwith "Do entries are not supported"
   | A.Spec (title, body) ->
       (* Run the spec now: its locals and ensures, in order. A spec adds no
          field to the struct. *)

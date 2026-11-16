@@ -57,6 +57,7 @@ expr:
     | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }
     | expr TIMES expr      { mk (Mul ($1, $3)) $startpos $endpos }
     | expr DIV expr        { mk (Div ($1, $3)) $startpos $endpos }
+    | expr MOD expr        { mk (Mod ($1, $3)) $startpos $endpos }
     | LPAREN expr RPAREN   { $2 }
 
 (* At least one branch, comma-separated, with an optional trailing comma. *)
@@ -164,6 +165,7 @@ nonresult_entry:
     | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
     (* Allowed in any block (spec, section 7.1). *)
     | ENSURE expr { mk (Ensure $2) $startpos $endpos }
+    | DO expr { mk (Do $2) $startpos $endpos }
 
 result_entry:
     | RESULT expr { mk (Result $2) $startpos $endpos }

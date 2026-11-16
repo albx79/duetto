@@ -198,6 +198,10 @@ let () =
     (Proj (Proj (Ident "a", "b"), "c"));
   check "arithmetic" "1 + 2"
     (Add (Num "1", Num "2"));
+  check "mod operator" "7 % 3"
+    (Mod (Num "7", Num "3"));
+  check "mod precedence" "1 + 7 % 3"
+    (Add (Num "1", Mod (Num "7", Num "3")));
   check "concat identifiers" "a ++ b"
     (Concat (Ident "a", Ident "b"));
   check "concat projections" "person.name ++ suffix"
@@ -341,6 +345,10 @@ let () =
   check "local entry" "{ answer = 42 }"
     (Struct [
       Local ("answer", Num "42");
+    ]);
+  check "do entry" "{ do answer() }"
+    (Struct [
+      Do (Call (Ident "answer", []));
     ]);
   check "result entry" "{ <<answer }"
     (Struct [
