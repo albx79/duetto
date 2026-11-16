@@ -39,6 +39,17 @@ type error =
       title: string;
       position: position;
     }
+  | Field_in_block of {
+      name: string;
+      is_type: bool;
+      position: position;
+    }
+  | Result_in_file of {
+      position: position;
+    }
+  | Do_in_file of {
+      position: position;
+    }
 
 exception Error of error
 
@@ -87,6 +98,26 @@ let string_of_error = function
       Printf.sprintf
         "The spec '%s' at %s is inside a nested struct; specs are allowed only at file level"
         title (string_of_position position)
+
+  | Field_in_block { name; is_type = false; position } ->
+      Printf.sprintf
+        "The field '%s' at %s is in a block: a brace group that ends with '<<' cannot have fields (use '%s = ...' for a local)"
+        name (string_of_position position) name
+
+  | Field_in_block { name; is_type = true; position } ->
+      Printf.sprintf
+        "The public type '%s' at %s is in a block: a brace group that ends with '<<' cannot have public types (use '%s = ...' for a private type)"
+        name (string_of_position position) name
+
+  | Result_in_file { position } ->
+      Printf.sprintf
+        "The '<<' at %s is at file level: a file is a static struct and has no result"
+        (string_of_position position)
+
+  | Do_in_file { position } ->
+      Printf.sprintf
+        "The 'do' at %s is at file level: a file is a static struct and performs no actions"
+        (string_of_position position)
 
   | Missing_spec_title { position } ->
       Printf.sprintf "The spec at %s has no title"

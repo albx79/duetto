@@ -86,8 +86,8 @@ Entry    ::= name ":" Expr             -- field
            | TypeName TypeParams? "=" TypeExpr   -- private type
            | spec SpecTitle Struct     -- file level only (section 7)
            | ensure Expr               -- any block; checked in tests (section 7.1)
-           | do Expr                   -- an effect; Expr : {}
-           | "<<" Expr                 -- block result; last entry
+           | do Expr                   -- an effect; Expr : {}; not at file level
+           | "<<" Expr                 -- block result; last entry; not at file level
 
 Path     ::= (name ".")* (name | TypeName)
 ```
@@ -99,6 +99,21 @@ Here `name` starts with a lowercase letter and `TypeName` with an uppercase lett
 - **Punning** works for paths only: `{ x }` means `{ x: x }`, and `{ p.name }` means `{ name: p.name }`. A path that ends in a type name binds a public type: `{ m.Bool }` means `{ Bool: m.Bool }` (section 3.8).
 - **Paths** go through values only. Types are members of records, not of other types, so a type name can only be the last segment: `m.Bool` is a path, but `Bool.x` and `M.Bool` are not.
 - **Spec entries** contribute no fields.
+
+**Which entries each kind of brace group allows (decided).** A brace group is a **record** or a **block** (section 3.3), and spec bodies and files have rules of their own:
+
+| Entry | Record | Block | Spec body | File |
+| --- | --- | --- | --- | --- |
+| field, including a punned one | yes | no | no | yes |
+| public type, including a punned one | yes | no | no | yes |
+| local | yes | yes | yes | yes |
+| private type | yes | yes | yes | yes |
+| `ensure` | yes | yes | yes | yes |
+| `do` | yes | yes | no | no |
+| `<<`, last | no | yes | no | no |
+| `spec` | no | no | no | yes |
+
+A **file is a static struct**: it performs no action, so it has no `do`, and it has no result, since a final `<<` would add nothing that more locals could not. Whether a brace group is a record or a block is known only at its closing `}`, so the reference parser checks these rules there, with an error that names the offending entry.
 
 ### 3.3 Blocks
 
@@ -414,7 +429,7 @@ Division is an open question (section 13.1). Non-termination is not failure but 
 
 ## 7. Spec language
 
-A spec entry's body is a struct whose entries run in order: locals and `ensure` statements. Specs are pure and deterministic: they perform no ambient I/O, and interaction with resources goes through explicit values, including scripted doubles (section 11). A spec sees the fields and locals of its enclosing struct.
+A spec entry's body is a struct whose entries run in order: locals, private types, and `ensure` statements. A private type can name a type for `some`, as in `NumOrd = Ordering(Num), natural = some(NumOrd)`. Specs are pure and deterministic: they perform no ambient I/O, and interaction with resources goes through explicit values, including scripted doubles (section 11). A spec sees the fields and locals of its enclosing struct.
 
 Spec entries appear only at **file level**, directly in a module's struct. A spec inside a lambda body would see parameters that have no values when the spec runs, and a spec inside a nested record would need that record's fields to have signatures, which only a module's own fields receive (section 12.1).
 

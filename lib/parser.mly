@@ -7,6 +7,49 @@ let mk_loc start_pos end_pos =
 let mk node start_pos end_pos =
   with_loc (mk_loc start_pos end_pos) node
 
+(* What an entry is, for the checks that depend on the kind of brace group
+   it is in (spec, sections 3.2 and 3.3). The parser cannot look inside the
+   AST nodes it builds, since they are abstract here, so each entry rule
+   returns its role and position along with the node. *)
+type role =
+  | Field_role of string        (* a field, including a punned one *)
+  | Public_type_role of string  (* a public type, including a punned one *)
+  | Do_role
+  | Other_role                  (* locals, private types, ensure, spec *)
+
+let diagnostic_position (pos : Lexing.position) : Diagnostic.position = {
+  filename = pos.pos_fname;
+  line = pos.pos_lnum;
+  column = pos.pos_cnum - pos.pos_bol + 1;
+}
+
+let error e = raise (Diagnostic.Error e)
+
+(* A brace group with a result is a block, and a block has no fields or
+   public types. *)
+let check_block_entries entries =
+  List.iter (fun (role, position, _) ->
+    match role with
+    | Field_role name ->
+        error (Diagnostic.Field_in_block { name; is_type = false; position })
+    | Public_type_role name ->
+        error (Diagnostic.Field_in_block { name; is_type = true; position })
+    | Do_role | Other_role -> ())
+    entries
+
+(* A file is a static struct: it has no result and performs no action. *)
+let check_file_entries entries result =
+  (match result with
+   | Some (_, position) -> error (Diagnostic.Result_in_file { position })
+   | None -> ());
+  List.iter (fun (role, position, _) ->
+    match role with
+    | Do_role -> error (Diagnostic.Do_in_file { position })
+    | Field_role _ | Public_type_role _ | Other_role -> ())
+    entries
+
+let nodes entries = List.map (fun (_, _, entry) -> entry) entries
+
 let rec last = function
   | [x] -> x
   | _ :: xs -> last xs
@@ -38,7 +81,10 @@ let expr_of_path start_pos end_pos path =
 %%
 
 main:
-    file_body EOF { mk (Struct $1) $startpos $endpos }
+    file_body EOF
+        { let (entries, result) = $1 in
+          check_file_entries entries result;
+          mk (Record (nodes entries)) $startpos $endpos }
 
 expr_main:
     expr EOF { $1 }
@@ -116,8 +162,16 @@ expr_item_rest:
     | COMMA { [] }
     | COMMA expr expr_item_rest { $2 :: $3 }
 
+(* Whether a brace group is a record or a block is known only at its "}":
+   a block is one that ends with a result (spec, section 3.3). *)
 struct_expr:
-    | LBRACE struct_body RBRACE { mk (Struct $2) $startpos $endpos }
+    | LBRACE struct_body RBRACE
+        { let (entries, result) = $2 in
+          match result with
+          | None -> mk (Record (nodes entries)) $startpos $endpos
+          | Some (expr, _) ->
+              check_block_entries entries;
+              mk (Block (nodes entries, expr)) $startpos $endpos }
 
 (* A file is a struct whose entries may also be specs; specs are allowed
    only there (spec, section 7). *)
@@ -128,39 +182,36 @@ struct_body:
     | entries(struct_entry) { $1 }
 
 (* Comma-separated entries, with an optional trailing comma, and at most one
-   result, which must come last. *)
+   result, which must come last. Returns the entries and the result. *)
 entries(entry):
-    | { [] }
-    | result_entry opt_comma { [$1] }
-    | entry entries_tail(entry) { $1 :: $2 }
+    | { ([], None) }
+    | result_entry opt_comma { ([], Some $1) }
+    | entry entries_tail(entry) { let (entries, result) = $2 in ($1 :: entries, result) }
 
 entries_tail(entry):
-    | { [] }
-    | COMMA { [] }
-    | COMMA entry entries_tail(entry) { $2 :: $3 }
-    | COMMA result_entry { [$2] }
-    | COMMA result_entry COMMA { [$2] }
+    | { ([], None) }
+    | COMMA { ([], None) }
+    | COMMA entry entries_tail(entry) { let (entries, result) = $3 in ($2 :: entries, result) }
+    | COMMA result_entry opt_comma { ([], Some $2) }
 
 file_entry:
     | nonresult_entry { $1 }
-    | SPEC LBRACE spec_body RBRACE { mk (Spec ($1, $3)) $startpos $endpos }
+    | SPEC LBRACE spec_body RBRACE
+        { (Other_role, diagnostic_position $startpos,
+           mk (Spec ($1, $3)) $startpos $endpos) }
 
 (* A spec in a nested struct is parsed, so that the error can say what is
    wrong instead of reporting an unexpected token. *)
 struct_entry:
     | nonresult_entry { $1 }
     | SPEC LBRACE spec_body RBRACE
-        { raise (Diagnostic.Error (Diagnostic.Nested_spec {
+        { error (Diagnostic.Nested_spec {
             title = $1;
-            position = {
-              Diagnostic.filename = $startpos.pos_fname;
-              line = $startpos.pos_lnum;
-              column = $startpos.pos_cnum - $startpos.pos_bol + 1;
-            };
-          })) }
+            position = diagnostic_position $startpos;
+          }) }
 
-(* A spec's body: locals and ensures, comma-separated, with an optional
-   trailing comma. *)
+(* A spec's body: locals, private types and ensures, comma-separated, with
+   an optional trailing comma. *)
 spec_body:
     | { [] }
     | spec_entry { [$1] }
@@ -168,6 +219,8 @@ spec_body:
 
 spec_entry:
     | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
+    | UIDENT type_params EQUAL type_expr
+        { mk (Type_local ($1, $2, $4)) $startpos $endpos }
     | ENSURE expr { mk (Ensure $2) $startpos $endpos }
 
 opt_comma:
@@ -175,24 +228,30 @@ opt_comma:
     | COMMA { () }
 
 nonresult_entry:
-    | LIDENT COLON expr { mk (Field ($1, $3)) $startpos $endpos }
-    | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
+    | nonresult_node
+        { let (role, node) = $1 in (role, diagnostic_position $startpos, node) }
+
+nonresult_node:
+    | LIDENT COLON expr { (Field_role $1, mk (Field ($1, $3)) $startpos $endpos) }
+    | LIDENT EQUAL expr { (Other_role, mk (Local ($1, $3)) $startpos $endpos) }
     (* Type entries (spec, section 3.8). *)
     | UIDENT type_params COLON type_expr
-        { mk (Type_field ($1, $2, $4)) $startpos $endpos }
+        { (Public_type_role $1, mk (Type_field ($1, $2, $4)) $startpos $endpos) }
     | UIDENT type_params EQUAL type_expr
-        { mk (Type_local ($1, $2, $4)) $startpos $endpos }
+        { (Other_role, mk (Type_local ($1, $2, $4)) $startpos $endpos) }
     (* Allowed in any block (spec, section 7.1). *)
-    | ENSURE expr { mk (Ensure $2) $startpos $endpos }
-    | DO expr { mk (Do $2) $startpos $endpos }
+    | ENSURE expr { (Other_role, mk (Ensure $2) $startpos $endpos) }
+    | DO expr { (Do_role, mk (Do $2) $startpos $endpos) }
     (* Punning (spec, section 3.2): { x } means { x: x } and { p.name }
        means { name: p.name }; { Bool } and { m.Bool } re-export a type. *)
     | value_path
-        { mk (Field (last $1, expr_of_path $startpos $endpos $1)) $startpos $endpos }
+        { let name = last $1 in
+          (Field_role name,
+           mk (Field (name, expr_of_path $startpos $endpos $1)) $startpos $endpos) }
     | type_path
         { let (prefix, name) = $1 in
           let rhs = mk (Type_ref (prefix, name)) $startpos $endpos in
-          mk (Type_field (name, [], rhs)) $startpos $endpos }
+          (Public_type_role name, mk (Type_field (name, [], rhs)) $startpos $endpos) }
 
 (* Value names joined by dots. Left-recursive, so that after "a." the next
    token decides between a longer value path and a type path. *)
@@ -217,7 +276,7 @@ type_param_list:
     | UIDENT COMMA type_param_list { $1 :: $3 }
 
 result_entry:
-    | RESULT expr { mk (Result $2) $startpos $endpos }
+    | RESULT expr { ($2, diagnostic_position $startpos) }
 
 type_expr:
     | type_path

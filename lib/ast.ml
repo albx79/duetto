@@ -76,7 +76,6 @@ module Make (W : WRAP) = struct
     | Type_local of string * string list * type_expr
     | Ensure of expr
     | Do of expr
-    | Result of expr
     (* A spec entry: its title and its body's entries, which are locals and
        ensures only (spec, section 7). *)
     | Spec of string * struct_entry list
@@ -106,7 +105,10 @@ module Make (W : WRAP) = struct
     | Call of expr * expr list
     | Lambda of string list * expr
     | Some_val of type_expr
-    | Struct of struct_entry list
+    (* A brace group without a result: its fields are its value. *)
+    | Record of struct_entry list
+    (* A brace group ending with <<e: its value is e (spec, section 3.3). *)
+    | Block of struct_entry list * expr
     | List of expr list
     | Concat of expr * expr
     | Eq of expr * expr

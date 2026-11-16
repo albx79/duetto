@@ -50,7 +50,8 @@ let rec eval (expr : A.expr) =
         Tree (fields
         |> List.map (fun (name, typ_dsc) -> (name, summon_value typ_dsc)))
     in summon_value typ
-  | A.Struct fields -> Tree (List.filter_map eval_field fields)
+  | A.Record fields -> Tree (List.filter_map eval_field fields)
+  | A.Block _ -> failwith "Blocks are not supported"
   | A.List entries ->
     Tree (entries |> List.mapi (fun idx item -> (string_of_int idx, eval item)))
   | A.Concat (_, _) ->
@@ -122,8 +123,6 @@ and eval_field (entry : A.struct_entry) =
        with Failure message ->
          failwith (Printf.sprintf "spec '%s': %s" title message));
       None
-  | A.Result _ ->
-      failwith "Results are not supported"
 
 let () =
   Random.self_init ();

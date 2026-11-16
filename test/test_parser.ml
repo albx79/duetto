@@ -55,6 +55,58 @@ let check_accepted_file path =
 
 let () =
   check_accepted_file "duetto/accepted-specs.duetto";
+
+  (* Records, blocks, spec bodies and files allow different entries
+     (spec, sections 3.2 and 3.3). *)
+  check "record with every record entry" "{ a: 1, b = 2, T: Num, U = Num, ensure b == 2, do f(), c }"
+    (Record [
+      Field ("a", Num "1");
+      Local ("b", Num "2");
+      Type_field ("T", [], Type_ref ([], "Num"));
+      Type_local ("U", [], Type_ref ([], "Num"));
+      Ensure (Eq (Ident "b", Num "2"));
+      Do (Call (Ident "f", []));
+      Field ("c", Ident "c");
+    ]);
+  check "block with every block entry" "{ b = 2, U = Num, ensure b == 2, do f(), <<b }"
+    (Block ([
+      Local ("b", Num "2");
+      Type_local ("U", [], Type_ref ([], "Num"));
+      Ensure (Eq (Ident "b", Num "2"));
+      Do (Call (Ident "f", []));
+    ], Ident "b"));
+  check_file_error "field in a block" "x: {\n  a = 1,\n  b: 2,\n  <<a\n}"
+    "The field 'b' at :3:3 is in a block: a brace group that ends with '<<' cannot have fields (use 'b = ...' for a local)";
+  check_file_error "punned name in a block" "x: { a = 1, a, <<a }"
+    "The field 'a' at :1:13 is in a block: a brace group that ends with '<<' cannot have fields (use 'a = ...' for a local)";
+  check_file_error "public type in a block" "x: { T: Num, <<1 }"
+    "The public type 'T' at :1:6 is in a block: a brace group that ends with '<<' cannot have public types (use 'T = ...' for a private type)";
+  check_file_error "punned type in a block" "x: { m.Bool, <<1 }"
+    "The public type 'Bool' at :1:6 is in a block: a brace group that ends with '<<' cannot have public types (use 'Bool = ...' for a private type)";
+  check_file "file with every file entry" "a: 1, b = 2, T: Num, U = Num, ensure b == 2, spec s { ensure a == 1 }, c"
+    (Record [
+      Field ("a", Num "1");
+      Local ("b", Num "2");
+      Type_field ("T", [], Type_ref ([], "Num"));
+      Type_local ("U", [], Type_ref ([], "Num"));
+      Ensure (Eq (Ident "b", Num "2"));
+      Spec ("s", [Ensure (Eq (Ident "a", Num "1"))]);
+      Field ("c", Ident "c");
+    ]);
+  check_file_error "result at file level" "x = 1,\n<<x"
+    "The '<<' at :2:1 is at file level: a file is a static struct and has no result";
+  check_file_error "do at file level" "x: 1,\n  do f()"
+    "The 'do' at :2:3 is at file level: a file is a static struct and performs no actions";
+  check_file "private types in a spec" "spec orderings { NumOrd = Ordering(Num), natural = some(NumOrd), ensure natural.compare(1, 1) == 'eq }"
+    (Record [
+      Spec ("orderings", [
+        Type_local ("NumOrd", [], Type_apply ([], "Ordering", [Type_ref ([], "Num")]));
+        Local ("natural", Some_val (Type_ref ([], "NumOrd")));
+        Ensure (Eq (Call (Proj (Ident "natural", "compare"), [Num "1"; Num "1"]), Label "eq"));
+      ]);
+    ]);
+  check_file_error "no public types in a spec" "spec s { T: Num }" "";
+  check_file_error "no do in a spec" "spec s { do f() }" "";
   check_file_error "error names a string token" "x: \"abc\" \"def\""
     "Unexpected token '\"def\"' at :1:10";
   check_file_error "error names a spec token" "x: 1 spec title {}"
@@ -95,7 +147,7 @@ let () =
     ]));
   check "case branch with a block" "case x { 'a -> { y = 1, <<y } }"
     (Case (Ident "x", [
-      { pattern = Label_pattern "a"; body = Struct [Local ("y", Num "1"); Result (Ident "y")] };
+      { pattern = Label_pattern "a"; body = Block ([Local ("y", Num "1")], Ident "y") };
     ]));
   check "case branch with a lambda" "case x { 'a -> y -> y }"
     (Case (Ident "x", [
@@ -118,26 +170,26 @@ let () =
   check_error "branches need commas" "case x { 'a -> 1 'b -> 2 }";
 
   check_file "spec" "spec it works { ensure f(1) == 2 }"
-    (Struct [Spec ("it works", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "2"))])]);
+    (Record [Spec ("it works", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "2"))])]);
   check_file "spec with locals" "spec adds { x = f(1), y = x + 1, ensure y == 3, }"
-    (Struct [
+    (Record [
       Spec ("adds", [
         Local ("x", Call (Ident "f", [Num "1"]));
         Local ("y", Add (Ident "x", Num "1"));
         Ensure (Eq (Ident "y", Num "3"));
       ]);
     ]);
-  check_file "empty spec" "spec nothing yet {}" (Struct [Spec ("nothing yet", [])]);
+  check_file "empty spec" "spec nothing yet {}" (Record [Spec ("nothing yet", [])]);
   check_file "specs among fields" "f: x -> x,\nspec identity { ensure f(1) == 1 },\ng: 2,"
-    (Struct [
+    (Record [
       Field ("f", Lambda (["x"], Ident "x"));
       Spec ("identity", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "1"))]);
       Field ("g", Num "2");
     ]);
   check_file "spec with nested struct" "spec s { r = { a: 1 }, ensure r.a == 1 }"
-    (Struct [
+    (Record [
       Spec ("s", [
-        Local ("r", Struct [Field ("a", Num "1")]);
+        Local ("r", Record [Field ("a", Num "1")]);
         Ensure (Eq (Proj (Ident "r", "a"), Num "1"));
       ]);
     ]);
@@ -174,10 +226,8 @@ let () =
   check "lambda trailing comma" "(x, y,) -> y"
     (Lambda (["x"; "y"], Ident "y"));
   check "lambda body struct" "x -> { y = x, <<y }"
-    (Lambda (["x"], Struct [
-      Local ("y", Ident "x");
-      Result (Ident "y");
-    ]));
+    (Lambda (["x"], Block ([
+      Local ("y", Ident "x")], Ident "y")));
   check "projection" "person.name"
     (Proj (Ident "person", "name"));
   check "chained projection" "a.b.c"
@@ -222,12 +272,10 @@ let () =
       Lambda (["x"], Add (Ident "x", Num "1"));
     ]));
   check "call with struct argument" "f({ a: 1 })"
-    (Call (Ident "f", [Struct [Field ("a", Num "1")]]));
+    (Call (Ident "f", [Record [Field ("a", Num "1")]]));
   check "call in struct" "{ tmp = f(x), <<tmp + 1 }"
-    (Struct [
-      Local ("tmp", Call (Ident "f", [Ident "x"]));
-      Result (Add (Ident "tmp", Num "1"));
-    ]);
+    (Block ([
+      Local ("tmp", Call (Ident "f", [Ident "x"]))], Add (Ident "tmp", Num "1")));
   check_error "call lone comma" "f(,)";
   check_error "call missing close paren" "f(x";
   check "equality" "x == 1"
@@ -248,7 +296,7 @@ let () =
   check "equality as argument" "f(a == b)"
     (Call (Ident "f", [Eq (Ident "a", Ident "b")]));
   check "equality in struct" "{ ok: x == y }"
-    (Struct [Field ("ok", Eq (Ident "x", Ident "y"))]);
+    (Record [Field ("ok", Eq (Ident "x", Ident "y"))]);
   check_error "equality is non-associative" "a == b == c";
   check_error "equality missing right operand" "a ==";
   (* Newlines are not significant, so a parenthesised expression on the next
@@ -256,7 +304,7 @@ let () =
   check "newline before paren is a call" "x -> x\n(1)"
     (Lambda (["x"], Call (Ident "x", [Num "1"])));
   check "newline before paren in struct is a call" "{ a = f\n(x) }"
-    (Struct [Local ("a", Call (Ident "f", [Ident "x"]))]);
+    (Record [Local ("a", Call (Ident "f", [Ident "x"]))]);
   check "concat and addition share a level" "a ++ b + c"
     (Add (Concat (Ident "a", Ident "b"), Ident "c"));
   check "arrow is right-associative" "x -> y -> x"
@@ -324,29 +372,29 @@ let () =
   check_error "no space after ?" "some(? A)";
   check_error "type variable is not an expression" "?A";
 
-  check "empty struct" "{}" (Struct []);
+  check "empty struct" "{}" (Record []);
   check "punned name entry" "{ x }"
-    (Struct [
+    (Record [
       Field ("x", Ident "x");
     ]);
   check "punned path entry" "{ person.name }"
-    (Struct [
+    (Record [
       Field ("name", Proj (Ident "person", "name"));
     ]);
   check "punned type entry" "{ Bool }"
-    (Struct [
+    (Record [
       Type_field ("Bool", [], Type_ref ([], "Bool"));
     ]);
   check "punned qualified type entry" "{ m.Bool }"
-    (Struct [
+    (Record [
       Type_field ("Bool", [], Type_ref (["m"], "Bool"));
     ]);
   check "punned deeply qualified type entry" "{ a.b.Bool }"
-    (Struct [
+    (Record [
       Type_field ("Bool", [], Type_ref (["a"; "b"], "Bool"));
     ]);
   check "punned deep value path" "{ a.b.c }"
-    (Struct [
+    (Record [
       Field ("c", Proj (Proj (Ident "a", "b"), "c"));
     ]);
   check_error "punned path cannot go from type to value" "{ Mod.value }";
@@ -355,114 +403,109 @@ let () =
   check_error "no types inside types after a value path" "{ pkg.Type.Ctor }";
 
   check "public type entry" "{ Num2: Num }"
-    (Struct [Type_field ("Num2", [], Type_ref ([], "Num"))]);
+    (Record [Type_field ("Num2", [], Type_ref ([], "Num"))]);
   check "private type entry" "{ Pair = { first: Num, second: Num } }"
-    (Struct [
+    (Record [
       Type_local ("Pair", [], Type_record [
         ("first", Type_ref ([], "Num"));
         ("second", Type_ref ([], "Num"));
       ]);
     ]);
   check "type constructor entry" "{ Box(A): { value: A } }"
-    (Struct [
+    (Record [
       Type_field ("Box", ["A"], Type_record [("value", Type_ref ([], "A"))]);
     ]);
   check "type constructor with many params" "{ Pair(A, B,) = { a: A, b: B } }"
-    (Struct [
+    (Record [
       Type_local ("Pair", ["A"; "B"], Type_record [
         ("a", Type_ref ([], "A"));
         ("b", Type_ref ([], "B"));
       ]);
     ]);
   check "type entry referring to a qualified type" "{ Flag: m.Bool }"
-    (Struct [Type_field ("Flag", [], Type_ref (["m"], "Bool"))]);
+    (Record [Type_field ("Flag", [], Type_ref (["m"], "Bool"))]);
   check "type entry applying a qualified constructor" "{ NumOrd = m.Ordering(Num) }"
-    (Struct [
+    (Record [
       Type_local ("NumOrd", [], Type_apply (["m"], "Ordering", [Type_ref ([], "Num")]));
     ]);
-  check "types among values" "{ T: Num, x: some(T), <<x }"
-    (Struct [
+  check "types among values" "{ T: Num, x: some(T) }"
+    (Record [
       Type_field ("T", [], Type_ref ([], "Num"));
       Field ("x", Some_val (Type_ref ([], "T")));
-      Result (Ident "x");
     ]);
+  check "private types in a block" "{ T = Num, x = some(T), <<x }"
+    (Block ([
+      Type_local ("T", [], Type_ref ([], "Num"));
+      Local ("x", Some_val (Type_ref ([], "T")))], Ident "x"));
   check_error "type entry needs a type" "{ T: 1 }";
   check_error "type params are type names" "{ Box(a): { value: a } }";
   check_error "type params are not empty" "{ Box(): Num }";
   check_error "value entry has no params" "{ f(x): 1 }";
   check_file "type entries at file level" "Bool2: Num,\nBox(A) = { value: A },\nx: 1"
-    (Struct [
+    (Record [
       Type_field ("Bool2", [], Type_ref ([], "Num"));
       Type_local ("Box", ["A"], Type_record [("value", Type_ref ([], "A"))]);
       Field ("x", Num "1");
     ]);
   check "simple struct" "{ answer: 42 }"
-    (Struct [
+    (Record [
       Field ("answer", Num "42");
     ]);
   check "nested struct" "{ answer: 42, config: { retries: 3 } }"
-    (Struct [
+    (Record [
       Field ("answer", Num "42");
-      Field ("config", Struct [
+      Field ("config", Record [
         Field ("retries", Num "3");
       ]);
     ]);
   check "struct with identifier field" "{ answer: x }"
-    (Struct [
+    (Record [
       Field ("answer", Ident "x");
     ]);
   check "struct with projection field" "{ name: person.name }"
-    (Struct [
+    (Record [
       Field ("name", Proj (Ident "person", "name"));
     ]);
   check "local entry" "{ answer = 42 }"
-    (Struct [
+    (Record [
       Local ("answer", Num "42");
     ]);
   check "do entry" "{ do answer() }"
-    (Struct [
+    (Record [
       Do (Call (Ident "answer", []));
     ]);
   check "result entry" "{ <<answer }"
-    (Struct [
-      Result (Ident "answer");
-    ]);
+    (Block ([], Ident "answer"));
   check "locals and result" "{ x = 1, y = x, <<y }"
-    (Struct [
+    (Block ([
       Local ("x", Num "1");
-      Local ("y", Ident "x");
-      Result (Ident "y");
-    ]);
+      Local ("y", Ident "x")], Ident "y"));
   check "trailing comma" "{ answer: 42, }"
-    (Struct [
+    (Record [
       Field ("answer", Num "42");
     ]);
   check "trailing comma after result" "{ x = 1, <<x, }"
-    (Struct [
-      Local ("x", Num "1");
-      Result (Ident "x");
-    ]);
+    (Block ([
+      Local ("x", Num "1")], Ident "x"));
 
   check "ensure" "{ ensure x == 1 }"
-    (Struct [Ensure (Eq (Ident "x", Num "1"))]);
+    (Record [Ensure (Eq (Ident "x", Num "1"))]);
   check "ensure among entries" "{ x = f(1), ensure x == 2, ensure g(x), <<x }"
-    (Struct [
+    (Block ([
       Local ("x", Call (Ident "f", [Num "1"]));
       Ensure (Eq (Ident "x", Num "2"));
-      Ensure (Call (Ident "g", [Ident "x"]));
-      Result (Ident "x");
-    ]);
+      Ensure (Call (Ident "g", [Ident "x"]))], Ident "x"));
   check "ensure trailing comma" "{ ensure a == b, }"
-    (Struct [Ensure (Eq (Ident "a", Ident "b"))]);
+    (Record [Ensure (Eq (Ident "a", Ident "b"))]);
   check "ensure with lambda and calls" "{ ensure map(xs, x -> x + 1) == [2, 3] }"
-    (Struct [
+    (Record [
       Ensure (Eq (
         Call (Ident "map", [Ident "xs"; Lambda (["x"], Add (Ident "x", Num "1"))]),
         List [Num "2"; Num "3"]));
     ]);
   check "ensure on a struct" "{ ensure f(x) == { ok: 1 } }"
-    (Struct [
-      Ensure (Eq (Call (Ident "f", [Ident "x"]), Struct [Field ("ok", Num "1")]));
+    (Record [
+      Ensure (Eq (Call (Ident "f", [Ident "x"]), Record [Field ("ok", Num "1")]));
     ]);
   check_error "ensure needs an expression" "{ ensure }";
   check_error "ensure is not a name" "{ ensure: 1 }";

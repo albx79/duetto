@@ -83,11 +83,11 @@ E     ::= f: e                  -- field
         | << e                  -- block result (last entry only)
         | spec t { P1, ..., Pn }
 
-P     ::= x = e | x = some(T) | ensure e
+P     ::= x = e | x = some(T) | T = τ | ensure e   -- T = τ: a private type alias
 T     ::= surface type, possibly with ?A and ..?R
 ```
 
-A file is the body of a struct. A struct with `<<` is a **block**; a struct without one is a **record** whose fields are its `f: e` entries. Spec titles are not significant in the core.
+A file is the body of a struct, with no `<<`. A struct with `<<` is a **block**, and has no fields; a struct without one is a **record** whose fields are its `f: e` entries (design draft, section 3.2). Spec titles are not significant in the core.
 
 A binding whose right-hand side is syntactically a lambda is a **lambda binding**; any other binding is **computed**. Within a struct, lambda bindings form one recursive group (section 4).
 
