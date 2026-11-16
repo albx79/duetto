@@ -44,6 +44,8 @@ let rec eval (expr : A.expr) =
       | A.Type_ref ([], "Num") -> Atom (Random.int 100)
       | A.Type_ref _ -> failwith "Only numbers can be summoned"
       | A.Type_apply _ -> failwith "Type application is not supported yet"
+      | A.Type_list _ -> failwith "Lists cannot be summoned yet"
+      | A.Type_function _ -> failwith "Functions cannot be summoned yet"
       | A.Type_var name ->
           failwith (Printf.sprintf "Type variables cannot be summoned yet (?%s)" name)
       | A.Type_record fields ->

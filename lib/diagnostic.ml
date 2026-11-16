@@ -47,6 +47,9 @@ type error =
   | Result_in_file of {
       position: position;
     }
+  | Tuple_type of {
+      position: position;
+    }
   | Do_in_file of {
       position: position;
     }
@@ -108,6 +111,11 @@ let string_of_error = function
       Printf.sprintf
         "The public type '%s' at %s is in a block: a brace group that ends with '<<' cannot have public types (use '%s = ...' for a private type)"
         name (string_of_position position) name
+
+  | Tuple_type { position } ->
+      Printf.sprintf
+        "The parenthesised types at %s are not followed by '->': Duetto has no tuple types"
+        (string_of_position position)
 
   | Result_in_file { position } ->
       Printf.sprintf

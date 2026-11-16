@@ -278,7 +278,32 @@ type_param_list:
 result_entry:
     | RESULT expr { ($2, diagnostic_position $startpos) }
 
+(* A function type's arrow binds loosest and associates to the right:
+   (A) -> (B) -> C is (A) -> ((B) -> C). *)
 type_expr:
+    | simple_type_expr { $1 }
+    | LPAREN RPAREN ARROW type_expr
+        { mk (Type_function ([], $4)) $startpos $endpos }
+    | LPAREN type_items RPAREN ARROW type_expr
+        { mk (Type_function (fst $2, $5)) $startpos $endpos }
+    (* Without an arrow, a parenthesised type is grouping: (T). A list of
+       types, or a trailing comma, is a tuple, which Duetto does not have
+       (spec, section 4.8). The arrow is the token after ")", so both forms
+       share the rule up to it. *)
+    | LPAREN type_items RPAREN
+        { match $2 with
+          | ([t], false) -> t
+          | _ -> error (Diagnostic.Tuple_type {
+                   position = diagnostic_position $startpos;
+                 }) }
+
+(* Types separated by commas, and whether there is a trailing comma. *)
+type_items:
+    | type_expr { ([$1], false) }
+    | type_expr COMMA { ([$1], true) }
+    | type_expr COMMA type_items { let (ts, trailing) = $3 in ($1 :: ts, trailing) }
+
+simple_type_expr:
     | type_path
         { let (prefix, name) = $1 in mk (Type_ref (prefix, name)) $startpos $endpos }
     | TYPE_VAR { mk (Type_var $1) $startpos $endpos }
@@ -286,6 +311,7 @@ type_expr:
         { let (prefix, name) = $1 in
           mk (Type_apply (prefix, name, $3)) $startpos $endpos }
     | LBRACE type_record_fields RBRACE { mk (Type_record $2) $startpos $endpos }
+    | LBRACKET type_expr RBRACKET { mk (Type_list $2) $startpos $endpos }
 
 type_expr_args:
     | type_expr { [$1] }

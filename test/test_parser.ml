@@ -359,6 +359,49 @@ let () =
       ];
     ])));
 
+  check "list type" "some([Num])" (Some_val (Type_list (Type_ref ([], "Num"))));
+  check "nested list type" "some([[?A]])" (Some_val (Type_list (Type_list (Type_var "A"))));
+  check "list of records" "some([{ name: String }])"
+    (Some_val (Type_list (Type_record [("name", Type_ref ([], "String"))])));
+  check "function type" "some((Num) -> String)"
+    (Some_val (Type_function ([Type_ref ([], "Num")], Type_ref ([], "String"))));
+  check "function type with two parameters" "some((?A, A) -> A)"
+    (Some_val (Type_function ([Type_var "A"; Type_ref ([], "A")], Type_ref ([], "A"))));
+  check "function type with trailing comma" "some((Num,) -> Num)"
+    (Some_val (Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num"))));
+  check "function type without parameters" "some(() -> Num)"
+    (Some_val (Type_function ([], Type_ref ([], "Num"))));
+  check "arrow is right-associative in types" "some((Num) -> (Num) -> Num)"
+    (Some_val (Type_function ([Type_ref ([], "Num")],
+      Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num")))));
+  check "function returning a list" "some((Num) -> [Num])"
+    (Some_val (Type_function ([Type_ref ([], "Num")], Type_list (Type_ref ([], "Num")))));
+  check "list of functions" "some([(Num) -> Num])"
+    (Some_val (Type_list (Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num")))));
+  check "function taking a function" "some(((Num) -> Num, [Num]) -> [Num])"
+    (Some_val (Type_function (
+      [Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num"));
+       Type_list (Type_ref ([], "Num"))],
+      Type_list (Type_ref ([], "Num")))));
+  check "function type in a record" "some({ compare: (A, A) -> Ordering })"
+    (Some_val (Type_record [
+      ("compare", Type_function ([Type_ref ([], "A"); Type_ref ([], "A")], Type_ref ([], "Ordering")));
+    ]));
+  check "function type as a type argument" "some(Box((Num) -> Num))"
+    (Some_val (Type_apply ([], "Box", [Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num"))])));
+  check "grouping in types" "some((Num))" (Some_val (Type_ref ([], "Num")));
+  check "grouped function type as a result" "some((Num) -> ((Num) -> Num))"
+    (Some_val (Type_function ([Type_ref ([], "Num")],
+      Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num")))));
+  check_file_error "no tuple types" "x = some((Num, String))"
+    "The parenthesised types at :1:10 are not followed by '->': Duetto has no tuple types";
+  check_file_error "no one-element tuple types" "x = some((Num,))"
+    "The parenthesised types at :1:10 are not followed by '->': Duetto has no tuple types";
+  check_error "empty parentheses need an arrow" "some(())";
+  check_error "list type needs one element type" "some([Num, Num])";
+  check_error "list type is not empty" "some([])";
+  check_error "arrow needs a parameter list" "some(Num -> Num)";
+  check_error "arrow needs a result" "some((Num) ->)";
   check "some type variable" "some(?A)" (Some_val (Type_var "A"));
   check "some multi-letter type variable" "some(?Key)" (Some_val (Type_var "Key"));
   check "type variable then bare use" "some({ first: ?A, second: A })"

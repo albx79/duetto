@@ -65,6 +65,10 @@ module Make (W : WRAP) = struct
        path like Type_ref, applied to at least one argument. *)
     | Type_apply of string list * string * type_expr list
     | Type_record of (string * type_expr) list
+    (* [T] (spec, section 4.5). *)
+    | Type_list of type_expr
+    (* (T1, ..., Tn) -> R (spec, section 4.1); () -> R takes no arguments. *)
+    | Type_function of type_expr list * type_expr
 
   and struct_entry = struct_entry_node wrapped
   and struct_entry_node =

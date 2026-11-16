@@ -71,3 +71,9 @@ spec A7 {
     z = some(?B),
     ensure pick(y, z) == y,
 },
+
+spec A8 {
+    xs = some([Num]),
+    ensure length(reverse(xs)) == length(xs),
+    ensure reverse([1, 2]) == [2, 1],
+},
