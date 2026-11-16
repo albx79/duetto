@@ -305,6 +305,19 @@ let () =
       ];
     ])));
 
+  check "some type variable" "some(?A)" (Some_val (Type_var "A"));
+  check "some multi-letter type variable" "some(?Key)" (Some_val (Type_var "Key"));
+  check "type variable then bare use" "some({ first: ?A, second: A })"
+    (Some_val (Type_record [
+      ("first", Type_var "A");
+      ("second", Type_ident "A");
+    ]));
+  check "type variable as an argument" "some(Result(?A, String))"
+    (Some_val (Type_apply ("Result", [Type_var "A"; Type_ident "String"])));
+  check_error "type variable needs a type name" "some(?a)";
+  check_error "no space after ?" "some(? A)";
+  check_error "type variable is not an expression" "?A";
+
   check "empty struct" "{}" (Struct []);
   check "simple struct" "{ answer: 42 }"
     (Struct [

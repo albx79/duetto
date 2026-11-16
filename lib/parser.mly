@@ -170,6 +170,7 @@ result_entry:
 
 type_expr:
     | UIDENT { mk (Type_ident $1) $startpos $endpos }
+    | TYPE_VAR { mk (Type_var $1) $startpos $endpos }
     | UIDENT LPAREN type_expr_args RPAREN { mk (Type_apply ($1, $3)) $startpos $endpos }
     | LBRACE type_record_fields RBRACE { mk (Type_record $2) $startpos $endpos }
 

@@ -127,6 +127,9 @@ rule token = parse
       })
     }
   | uident_start uident_char* as name { UIDENT name }
+  (* The first occurrence of a type variable (spec, section 4.7). Like a
+     label, it is one token, so "? A" is not a type variable. *)
+  | '?' (uident_start uident_char* as name) { TYPE_VAR name }
 
   | "->" { ARROW }
   | "==" { EQEQ }

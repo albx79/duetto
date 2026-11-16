@@ -55,6 +55,9 @@ module Make (W : WRAP) = struct
   type type_expr = type_expr_node wrapped
   and type_expr_node =
     | Type_ident of string
+    (* ?A: the first occurrence of a type variable. Later occurrences are
+       bare names, parsed as Type_ident and resolved later (spec, 4.7). *)
+    | Type_var of string
     | Type_apply of string * type_expr list
     | Type_record of (string * type_expr) list
 

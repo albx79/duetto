@@ -7,6 +7,7 @@
 %token <string> LABEL    (* 'name, without the quote *)
 %token <string> LIDENT   (* value names *)
 %token <string> UIDENT   (* type names *)
+%token <string> TYPE_VAR (* ?Name, the first occurrence of a type variable, without the ? *)
 %token <string> SPEC     (* spec keyword with its free-text title *)
 %token CASE SOME ENSURE DO
 %token ARROW EQEQ RESULT DOTDOT CONCAT

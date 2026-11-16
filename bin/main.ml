@@ -44,6 +44,8 @@ let rec eval (expr : A.expr) =
       | A.Type_ident "Num" -> Atom (Random.int 100)
       | A.Type_ident _ -> failwith "Only numbers can be summoned"
       | A.Type_apply _ -> failwith "Type application is not supported yet"
+      | A.Type_var name ->
+          failwith (Printf.sprintf "Type variables cannot be summoned yet (?%s)" name)
       | A.Type_record fields ->
         Tree (fields
         |> List.map (fun (name, typ_dsc) -> (name, summon_value typ_dsc)))

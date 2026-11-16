@@ -8,6 +8,7 @@ let show = function
   | LABEL l -> "LABEL " ^ l
   | LIDENT x -> "LIDENT " ^ x
   | UIDENT x -> "UIDENT " ^ x
+  | TYPE_VAR x -> "TYPE_VAR " ^ x
   | SPEC t -> Printf.sprintf "SPEC %S" t
   | CASE -> "CASE" | SOME -> "SOME" | ENSURE -> "ENSURE" | DO -> "DO"
   | ARROW -> "ARROW" | EQEQ -> "EQEQ" | RESULT -> "RESULT"
@@ -63,6 +64,10 @@ let () =
       UIDENT "Int"; UIDENT "Ordering" ];
   check "identifier character classes" "fooBar 'foo_bar"
     [ LIDENT "foo"; UIDENT "Bar"; LABEL "foo_bar" ];
+  check "type variables" "?A ?Key"
+    [ TYPE_VAR "A"; TYPE_VAR "Key" ];
+  check "question mark apart from a type name" "? A ?a"
+    [ QUESTION; UIDENT "A"; QUESTION; LIDENT "a" ];
   check_error "uident cannot contain underscore" "Foo_Bar"
     "Unexpected character '_' at :1:4";
   check "operators" "-> == = << .. . ++ + - * / % : | ?"
@@ -82,7 +87,7 @@ let () =
   check "spec prefix is an identifier" "specs" [ LIDENT "specs" ];
   check "rigid row" "some({ name: String, ..?R })"
     [ SOME; LPAREN; LBRACE; LIDENT "name"; COLON; UIDENT "String"; COMMA;
-      DOTDOT; QUESTION; UIDENT "R"; RBRACE; RPAREN ];
+      DOTDOT; TYPE_VAR "R"; RBRACE; RPAREN ];
   check "case" "case x { 'a -> 1, 'b -> 2 }"
     [ CASE; LIDENT "x"; LBRACE; LABEL "a"; ARROW; NUM "1"; COMMA;
       LABEL "b"; ARROW; NUM "2"; RBRACE ];

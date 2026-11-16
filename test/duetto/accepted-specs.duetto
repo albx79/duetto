@@ -52,3 +52,22 @@ spec A13 {
     ensure c.compare(1, 1) == 'eq,
     ensure c.compare(1, 2) == 'lt,
 },
+
+spec A4 {
+    x = some(?A),
+    ensure identity(x) == x,
+},
+
+spec A5 {
+    x = some(?A),
+    ensure identity(x) == x,
+    ensure identity(5) == 5,
+},
+
+spec A7 {
+    x = some(?A),
+    ensure pick(x, x) == x,
+    y = some(?A),
+    z = some(?B),
+    ensure pick(y, z) == y,
+},
