@@ -65,6 +65,11 @@ module Make (W : WRAP) = struct
        path like Type_ref, applied to at least one argument. *)
     | Type_apply of string list * string * type_expr list
     | Type_record of (string * type_expr) list
+    (* 'a, a label singleton type (spec, section 4.2). *)
+    | Type_label of string
+    (* T1 | ... | Tn with n >= 2, in source order; which members are allowed
+       is checked later (spec, section 9). *)
+    | Type_union of type_expr list
     (* [T] (spec, section 4.5). *)
     | Type_list of type_expr
     (* (T1, ..., Tn) -> R (spec, section 4.1); () -> R takes no arguments. *)

@@ -584,6 +584,8 @@ In the order of the design draft's section 13.3:
 
 After those, the rules should be validated by a reference checker that reproduces the test cases of section 8.
 
+The step may also include **open unions**, with one rest variable, a catch-all pattern and shape constraints on the rest; this is open in the design draft (section 9).
+
 **Cases the struct-union step must reproduce.**
 
 | # | Situation | Expected |

@@ -243,6 +243,8 @@ Labels are primitive atomic values and singleton types. Duetto has no primitive 
 
 Unions may contain labels and exact records with distinct field sets: these are struct unions (section 9). A union such as `Num | String` is not allowed. Consuming a label union is done by matching on the label (section 6.3), which is ordinary value inspection, not type inspection. A singleton label type is a subtype of any union containing it.
 
+**A union is the set union of its members (decided).** Members are labels and exact records, which describe themselves, not tagged alternatives, so grouping and order do not matter: `'a | ('b | 'c)`, `('a | 'b) | 'c` and `'c | 'b | 'a` are the same type, and a parenthesised union inside a union is flattened. The rule that members have distinct shapes applies to the flattened members. A **repeated member**, such as `'a | 'a`, or `Bool | 'true` once `Bool` is expanded, is harmless as a set but probably a mistake, so it is reported as a **warning**, not an error. Since repetitions can come from aliases, they are found after aliases are expanded, not by the parser.
+
 There are no tagged constructors. Data that would conventionally be a tagged union is a struct union, whose members are told apart by their field sets (section 9).
 
 ### 4.3 Exact records
@@ -550,7 +552,7 @@ eval = e -> case e {
 },
 ```
 
-- A union may contain labels and exact records, as long as every member has a **distinct label or field set**, and **no member is a type variable**. The last condition preserves parametricity: code never tests whether a value is an `A`, only which known shape it has.
+- A union may contain labels and exact records, as long as every member has a **distinct label or field set**, and **no member is a type variable**. The last condition preserves parametricity: code never tests whether a value is an `A`, only which known shape it has. A single **rest variable**, standing for the members not otherwise listed, is under consideration (see "Open unions" below); it keeps that guarantee, since code still tests only known shapes.
 - **Members are exact.** A member with an open row, such as `{ name: String, .. }`, would overlap every record with `name`, so it is forbidden.
 - **Distinctness is checked after expansion.** Member aliases are flattened first, as in `Option(A) | { y: Num }`, and recursive aliases are unfolded one level. A member that expands to a type variable is excluded. Recursive aliases such as `Expr` are needed, so they move from deferred to required (section 13.2).
 - Values are plain data: they print well, `some(Expr)` synthesizes them, and `==` works structurally.
@@ -563,6 +565,23 @@ eval = e -> case e {
 - An exact pattern such as `{ a }` matches only the member whose field set is exactly `{ a }`.
 - An open pattern such as `{ a, .. }` matches every member that has the field `a`. The field must have the same type in all the members it matches.
 - Branches are checked in order. A branch that is fully covered by earlier branches is an error, as with wildcard patterns elsewhere: `{ a, b }` may not follow `{ a, .. }`. The branches together must cover every member.
+
+**Open unions (open).** A union could end with one type variable standing for the rest of its members, so that code can handle some shapes and pass the others through unchanged:
+
+```duetto
+map_err: (r, f) -> case r { { err } -> f(err), other -> other },
+```
+
+with the signature `map_err : ({ err: ?A } | ?B, (A) -> ?C) -> C | B`. The proposal:
+
+- **A catch-all pattern.** A branch whose pattern is a name, such as `other`, matches every member the earlier branches did not, binds the value, and has the rest variable's type. It must be the last branch.
+- **Shape constraints.** A rest variable comes with the shapes it must not contain: here, `B` has no member with field set `{ err }`, or the first branch would take values that belong to `B`. This mirrors `R lacks name` for record rows (formal core, section 3). Similarly, the members of `C` and `B` in the result must not share a shape with different types.
+- **Errors at instantiation.** A call that instantiates a variable so as to break these constraints, such as `B := { err: String } | 'x`, is a type error reported at that call; the construct itself is allowed.
+- **One variable per union in parameter types.** Matching `'x | { err: Num }` against `{ err: ?A } | ?B` has one solution, `B := 'x`, while matching it against `?B | ?C` has many, so there would be no principal type. A union in a parameter type has at most one variable, as a record has at most one row variable. In a result, such as `C | B`, several variables are fine when the parameters already fix them.
+- **The same machinery as rows.** Since members have distinct shapes, a union is a finite map from shapes to member types, and a union with a rest variable is an open row over shapes. Unification and lacks constraints then work as for record rows. The same idea appears in OCaml's polymorphic variants and Koka's effect rows.
+- **Generators.** `some({ err: ?A } | ?B)` must produce values of `B` that are not of shape `{ err }`, as tokens of an abstract type.
+
+This belongs to the struct-union step (formal core, section 9.3), and is listed in section 13.1.
 
 **Extraction.** How unions are formed from specs is described in section 12.4. Because members are distinguished by a label or field set, a union behaves like a finite map from discriminators to member types, which keeps extraction tractable. Unrestricted unions such as `Num | String`, or overlapping members, have no discriminator to pair by, which is why they remain excluded.
 
@@ -895,6 +914,7 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 ### 13.1 Open questions
 
 - **Choice data.** Tagged unions are not adopted. Struct unions (section 9) take their place, and section 13.4 plans the rest.
+- **Open unions** (section 9). Unions ending with one rest variable, as in `map_err : ({ err: ?A } | ?B, (A) -> ?C) -> C | B`. Recommendation: allow them, with a catch-all binder pattern as the last `case` branch, shape constraints on the rest variable checked at each instantiation, and at most one variable per union in parameter types. Open points: the catch-all pattern's syntax, since a bare name is new as a pattern; whether a catch-all is allowed on unions without a rest variable, as a shorthand for the remaining members; and how extraction forms a rest variable from specs.
 - **Preconditions** (section 7.1). The whole precondition rule is under design: the syntactic test, the blame rules, and discarding. The two items below are open points within it.
 - **Preconditions in law specs** (section 7.1). An implementation could escape a law by a precondition that rejects the summoned values the law is checked with. The options: (1) discard as in other specs, and report a law spec whose cases were all discarded, as for any spec; (2) also report every discard in a law spec, since a law should hold for every value of the interface's type; (3) treat a precondition that fails in a law spec as a failure of the law. Recommendation: (1) for now, since it is the general rule, with discard counts shown in the report so that a law checked mostly on rejected inputs is visible.
 - **Generating inputs that satisfy preconditions.** Discarding wastes generated cases when a precondition rejects most of them. A later step could use preconditions to guide `some` (section 7.4).

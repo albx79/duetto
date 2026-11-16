@@ -45,6 +45,8 @@ let rec eval (expr : A.expr) =
       | A.Type_ref _ -> failwith "Only numbers can be summoned"
       | A.Type_apply _ -> failwith "Type application is not supported yet"
       | A.Type_list _ -> failwith "Lists cannot be summoned yet"
+      | A.Type_label l -> Label l
+      | A.Type_union _ -> failwith "Unions cannot be summoned yet"
       | A.Type_function _ -> failwith "Functions cannot be summoned yet"
       | A.Type_var name ->
           failwith (Printf.sprintf "Type variables cannot be summoned yet (?%s)" name)

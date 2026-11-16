@@ -70,6 +70,8 @@ let expr_of_path start_pos end_pos path =
 %nonassoc below_RPAREN
 %nonassoc RPAREN
 %right ARROW
+(* Above ARROW: in a type, (A) -> B | C is (A) -> (B | C). *)
+%left BAR
 %nonassoc EQEQ
 %left PLUS MINUS CONCAT
 %left TIMES DIV MOD
@@ -278,35 +280,65 @@ type_param_list:
 result_entry:
     | RESULT expr { ($2, diagnostic_position $startpos) }
 
-(* A function type's arrow binds loosest and associates to the right:
-   (A) -> (B) -> C is (A) -> ((B) -> C). *)
+(* A union (spec, section 4.2): two or more members separated by "|". *)
 type_expr:
-    | simple_type_expr { $1 }
+    | typed_members { fst $1 }
+
+(* A type together with its union members, so that a parenthesised union
+   inside a union can be flattened: a union is a set, so grouping does not
+   matter (spec, section 4.2). A type that is not a union is its own only
+   member. *)
+typed_members:
+    | union_members
+        { let node =
+            match $1 with
+            | [t] -> t
+            | members -> mk (Type_union members) $startpos $endpos
+          in
+          (node, $1) }
+
+union_members:
+    (* With "|" next, keep extending the union rather than ending it: this
+       is what makes the "|" after a function type's result part of the
+       result. *)
+    | atomic_type_expr %prec ARROW { $1 }
+    | atomic_type_expr BAR union_members { $1 @ $3 }
+
+(* A function type's result extends as far as possible: the arrow
+   associates to the right, (A) -> (B) -> C is (A) -> ((B) -> C), and a
+   union after it is the result, (A) -> B | C is (A) -> (B | C). A function
+   type as a member before "|" needs parentheses: ((A) -> B) | C. *)
+(* An atomic type, as the list of union members it contributes: one, except
+   for a parenthesised union, which contributes all of its members. *)
+atomic_type_expr:
+    | simple_type_expr { [$1] }
     | LPAREN RPAREN ARROW type_expr
-        { mk (Type_function ([], $4)) $startpos $endpos }
+        { [mk (Type_function ([], $4)) $startpos $endpos] }
     | LPAREN type_items RPAREN ARROW type_expr
-        { mk (Type_function (fst $2, $5)) $startpos $endpos }
+        { [mk (Type_function (List.map fst (fst $2), $5)) $startpos $endpos] }
     (* Without an arrow, a parenthesised type is grouping: (T). A list of
        types, or a trailing comma, is a tuple, which Duetto does not have
        (spec, section 4.8). The arrow is the token after ")", so both forms
        share the rule up to it. *)
     | LPAREN type_items RPAREN
         { match $2 with
-          | ([t], false) -> t
+          | ([(_, members)], false) -> members
           | _ -> error (Diagnostic.Tuple_type {
                    position = diagnostic_position $startpos;
                  }) }
 
-(* Types separated by commas, and whether there is a trailing comma. *)
+(* Types separated by commas, each with its union members, and whether there
+   is a trailing comma. *)
 type_items:
-    | type_expr { ([$1], false) }
-    | type_expr COMMA { ([$1], true) }
-    | type_expr COMMA type_items { let (ts, trailing) = $3 in ($1 :: ts, trailing) }
+    | typed_members { ([$1], false) }
+    | typed_members COMMA { ([$1], true) }
+    | typed_members COMMA type_items { let (ts, trailing) = $3 in ($1 :: ts, trailing) }
 
 simple_type_expr:
     | type_path
         { let (prefix, name) = $1 in mk (Type_ref (prefix, name)) $startpos $endpos }
     | TYPE_VAR { mk (Type_var $1) $startpos $endpos }
+    | LABEL { mk (Type_label $1) $startpos $endpos }
     | type_path LPAREN type_expr_args RPAREN
         { let (prefix, name) = $1 in
           mk (Type_apply (prefix, name, $3)) $startpos $endpos }

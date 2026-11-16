@@ -359,6 +359,64 @@ let () =
       ];
     ])));
 
+  check "label type" "some('true)" (Some_val (Type_label "true"));
+  check "label union" "some('lt | 'eq | 'gt)"
+    (Some_val (Type_union [Type_label "lt"; Type_label "eq"; Type_label "gt"]));
+  check "union of records" "some({ ok: Num } | { err: String })"
+    (Some_val (Type_union [
+      Type_record [("ok", Type_ref ([], "Num"))];
+      Type_record [("err", Type_ref ([], "String"))];
+    ]));
+  check "union of a label and a record" "some('none | { value: ?A })"
+    (Some_val (Type_union [Type_label "none"; Type_record [("value", Type_var "A")]]));
+  check "union with an alias" "some(Bool | 'maybe)"
+    (Some_val (Type_union [Type_ref ([], "Bool"); Type_label "maybe"]));
+  check "union in a list" "some(['a | 'b])"
+    (Some_val (Type_list (Type_union [Type_label "a"; Type_label "b"])));
+  check "union as a parameter" "some(('true | 'false) -> Num)"
+    (Some_val (Type_function ([Type_union [Type_label "true"; Type_label "false"]],
+      Type_ref ([], "Num"))));
+  check "union after an arrow is the result" "some((String) -> { ok: Num } | { err: String })"
+    (Some_val (Type_function ([Type_ref ([], "String")], Type_union [
+      Type_record [("ok", Type_ref ([], "Num"))];
+      Type_record [("err", Type_ref ([], "String"))];
+    ])));
+  check "function type as a union member" "some(((Num) -> Num) | 'none)"
+    (Some_val (Type_union [
+      Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num"));
+      Type_label "none";
+    ]));
+  check "function type as the last union member" "some('none | (Num) -> Num)"
+    (Some_val (Type_union [
+      Type_label "none";
+      Type_function ([Type_ref ([], "Num")], Type_ref ([], "Num"));
+    ]));
+  check "nested union is flattened" "some('a | ('b | 'c))"
+    (Some_val (Type_union [Type_label "a"; Type_label "b"; Type_label "c"]));
+  check "nested union first is flattened" "some(('a | 'b) | 'c)"
+    (Some_val (Type_union [Type_label "a"; Type_label "b"; Type_label "c"]));
+  check "deeply nested union is flattened" "some((('a | ('b))) | ('c | 'd))"
+    (Some_val (Type_union [Type_label "a"; Type_label "b"; Type_label "c"; Type_label "d"]));
+  check "grouped union alone is the union" "some(('a | 'b))"
+    (Some_val (Type_union [Type_label "a"; Type_label "b"]));
+  check "union inside a parameter is not flattened outward" "some(('a | 'b) -> 'c | 'd)"
+    (Some_val (Type_function ([Type_union [Type_label "a"; Type_label "b"]],
+      Type_union [Type_label "c"; Type_label "d"])));
+  check "repeated members are kept for the checker" "some('a | 'a)"
+    (Some_val (Type_union [Type_label "a"; Type_label "a"]));
+  check "union in a record field" "some({ result: 'ok | 'failed })"
+    (Some_val (Type_record [("result", Type_union [Type_label "ok"; Type_label "failed"])]));
+  check "union as a type argument" "some(Box('a | 'b, Num))"
+    (Some_val (Type_apply ([], "Box", [Type_union [Type_label "a"; Type_label "b"]; Type_ref ([], "Num")])));
+  check "type entries with unions" "{ Bool: 'true | 'false, OrderingResult = 'lt | 'eq | 'gt }"
+    (Record [
+      Type_field ("Bool", [], Type_union [Type_label "true"; Type_label "false"]);
+      Type_local ("OrderingResult", [], Type_union [Type_label "lt"; Type_label "eq"; Type_label "gt"]);
+    ]);
+  check_error "union needs a member after |" "some('a |)";
+  check_error "union needs a member before |" "some(| 'a)";
+  check_error "no double bar" "some('a || 'b)";
+  check_error "label type is not an expression type name" "some('A)";
   check "list type" "some([Num])" (Some_val (Type_list (Type_ref ([], "Num"))));
   check "nested list type" "some([[?A]])" (Some_val (Type_list (Type_list (Type_var "A"))));
   check "list of records" "some([{ name: String }])"
