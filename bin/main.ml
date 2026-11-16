@@ -41,8 +41,8 @@ let rec eval (expr : A.expr) =
       failwith "Runtime evaluator does not support lambdas yet"
   | A.Some_val typ ->
     let rec summon_value (typ_desc : A.type_expr) = match typ_desc.node with
-      | A.Type_ident "Num" -> Atom (Random.int 100)
-      | A.Type_ident _ -> failwith "Only numbers can be summoned"
+      | A.Type_ref ([], "Num") -> Atom (Random.int 100)
+      | A.Type_ref _ -> failwith "Only numbers can be summoned"
       | A.Type_apply _ -> failwith "Type application is not supported yet"
       | A.Type_var name ->
           failwith (Printf.sprintf "Type variables cannot be summoned yet (?%s)" name)
@@ -102,6 +102,8 @@ and eval_field (entry : A.struct_entry) =
   match entry.node with
   | A.Field (s, e) -> Some (s, eval e)
   | A.Local (s, e) -> Some (s, eval e)
+  (* Types exist only at compile time (spec, section 3.8). *)
+  | A.Type_field _ | A.Type_local _ -> None
   | A.Ensure e ->
       let pos = entry.loc.start_pos in
       (match eval e with

@@ -291,21 +291,37 @@ let () =
     ]);
 
   check "some simple type" "some(Int)"
-    (Some_val (Type_ident "Int"));
+    (Some_val (Type_ref ([], "Int")));
+  check "some qualified type" "some(m.Bool)"
+    (Some_val (Type_ref (["m"], "Bool")));
+  check "some deeply qualified type" "some(a.b.Bool)"
+    (Some_val (Type_ref (["a"; "b"], "Bool")));
+  check_error "type path ends with a type" "some(m.b)";
+  check_error "no types inside types" "some(M.Bool)";
   check "some type application" "some(Result(Int, String))"
-    (Some_val (Type_apply ("Result", [
-      Type_ident "Int";
-      Type_ident "String";
+    (Some_val (Type_apply ([], "Result", [
+      Type_ref ([], "Int");
+      Type_ref ([], "String");
     ])));
+  check "some qualified type application" "some(m.Result(Num, n.Err))"
+    (Some_val (Type_apply (["m"], "Result", [
+      Type_ref ([], "Num");
+      Type_ref (["n"], "Err");
+    ])));
+  check "some deeply qualified type application" "some(a.b.Box(Num))"
+    (Some_val (Type_apply (["a"; "b"], "Box", [Type_ref ([], "Num")])));
+  check_error "applied path ends with a type" "some(m.box(Num))";
+  check_error "no applied types inside types" "some(M.Box(Num))";
+  check_error "type application needs arguments" "some(m.Box())";
   check "some record type" "some({ name: String, age: Int })"
     (Some_val (Type_record [
-      ("name", Type_ident "String");
-      ("age", Type_ident "Int");
+      ("name", Type_ref ([], "String"));
+      ("age", Type_ref ([], "Int"));
     ]));
   check "some nested type" "some(Option({ value: Num }))"
-    (Some_val (Type_apply ("Option", [
+    (Some_val (Type_apply ([], "Option", [
       Type_record [
-        ("value", Type_ident "Num");
+        ("value", Type_ref ([], "Num"));
       ];
     ])));
 
@@ -314,15 +330,86 @@ let () =
   check "type variable then bare use" "some({ first: ?A, second: A })"
     (Some_val (Type_record [
       ("first", Type_var "A");
-      ("second", Type_ident "A");
+      ("second", Type_ref ([], "A"));
     ]));
   check "type variable as an argument" "some(Result(?A, String))"
-    (Some_val (Type_apply ("Result", [Type_var "A"; Type_ident "String"])));
+    (Some_val (Type_apply ([], "Result", [Type_var "A"; Type_ref ([], "String")])));
   check_error "type variable needs a type name" "some(?a)";
   check_error "no space after ?" "some(? A)";
   check_error "type variable is not an expression" "?A";
 
   check "empty struct" "{}" (Struct []);
+  check "punned name entry" "{ x }"
+    (Struct [
+      Field ("x", Ident "x");
+    ]);
+  check "punned path entry" "{ person.name }"
+    (Struct [
+      Field ("name", Proj (Ident "person", "name"));
+    ]);
+  check "punned type entry" "{ Bool }"
+    (Struct [
+      Type_field ("Bool", [], Type_ref ([], "Bool"));
+    ]);
+  check "punned qualified type entry" "{ m.Bool }"
+    (Struct [
+      Type_field ("Bool", [], Type_ref (["m"], "Bool"));
+    ]);
+  check "punned deeply qualified type entry" "{ a.b.Bool }"
+    (Struct [
+      Type_field ("Bool", [], Type_ref (["a"; "b"], "Bool"));
+    ]);
+  check "punned deep value path" "{ a.b.c }"
+    (Struct [
+      Field ("c", Proj (Proj (Ident "a", "b"), "c"));
+    ]);
+  check_error "punned path cannot go from type to value" "{ Mod.value }";
+  check_error "punned path cannot go back to values" "{ pkg.Type.value }";
+  check_error "no types inside types in punned paths" "{ Mod.Type }";
+  check_error "no types inside types after a value path" "{ pkg.Type.Ctor }";
+
+  check "public type entry" "{ Num2: Num }"
+    (Struct [Type_field ("Num2", [], Type_ref ([], "Num"))]);
+  check "private type entry" "{ Pair = { first: Num, second: Num } }"
+    (Struct [
+      Type_local ("Pair", [], Type_record [
+        ("first", Type_ref ([], "Num"));
+        ("second", Type_ref ([], "Num"));
+      ]);
+    ]);
+  check "type constructor entry" "{ Box(A): { value: A } }"
+    (Struct [
+      Type_field ("Box", ["A"], Type_record [("value", Type_ref ([], "A"))]);
+    ]);
+  check "type constructor with many params" "{ Pair(A, B,) = { a: A, b: B } }"
+    (Struct [
+      Type_local ("Pair", ["A"; "B"], Type_record [
+        ("a", Type_ref ([], "A"));
+        ("b", Type_ref ([], "B"));
+      ]);
+    ]);
+  check "type entry referring to a qualified type" "{ Flag: m.Bool }"
+    (Struct [Type_field ("Flag", [], Type_ref (["m"], "Bool"))]);
+  check "type entry applying a qualified constructor" "{ NumOrd = m.Ordering(Num) }"
+    (Struct [
+      Type_local ("NumOrd", [], Type_apply (["m"], "Ordering", [Type_ref ([], "Num")]));
+    ]);
+  check "types among values" "{ T: Num, x: some(T), <<x }"
+    (Struct [
+      Type_field ("T", [], Type_ref ([], "Num"));
+      Field ("x", Some_val (Type_ref ([], "T")));
+      Result (Ident "x");
+    ]);
+  check_error "type entry needs a type" "{ T: 1 }";
+  check_error "type params are type names" "{ Box(a): { value: a } }";
+  check_error "type params are not empty" "{ Box(): Num }";
+  check_error "value entry has no params" "{ f(x): 1 }";
+  check_file "type entries at file level" "Bool2: Num,\nBox(A) = { value: A },\nx: 1"
+    (Struct [
+      Type_field ("Bool2", [], Type_ref ([], "Num"));
+      Type_local ("Box", ["A"], Type_record [("value", Type_ref ([], "A"))]);
+      Field ("x", Num "1");
+    ]);
   check "simple struct" "{ answer: 42 }"
     (Struct [
       Field ("answer", Num "42");

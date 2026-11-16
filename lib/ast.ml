@@ -54,17 +54,26 @@ module Make (W : WRAP) = struct
 
   type type_expr = type_expr_node wrapped
   and type_expr_node =
-    | Type_ident of string
+    (* A type name, reached through a path of value names: Bool is
+       ([], "Bool"), m.Bool is (["m"], "Bool"). Types are members of
+       records, not of other types, so only the last segment is a type. *)
+    | Type_ref of string list * string
     (* ?A: the first occurrence of a type variable. Later occurrences are
-       bare names, parsed as Type_ident and resolved later (spec, 4.7). *)
+       bare names, parsed as Type_ref and resolved later (spec, 4.7). *)
     | Type_var of string
-    | Type_apply of string * type_expr list
+    (* Result(A, E), m.Ordering(Num): a type constructor, reached through a
+       path like Type_ref, applied to at least one argument. *)
+    | Type_apply of string list * string * type_expr list
     | Type_record of (string * type_expr) list
 
   and struct_entry = struct_entry_node wrapped
   and struct_entry_node =
     | Field of string * expr
     | Local of string * expr
+    (* Name(Params): T and Name(Params) = T (spec, section 3.8). Types exist
+       only at compile time: they are not part of a record's runtime value. *)
+    | Type_field of string * string list * type_expr
+    | Type_local of string * string list * type_expr
     | Ensure of expr
     | Do of expr
     | Result of expr

@@ -6,6 +6,20 @@ let mk_loc start_pos end_pos =
 
 let mk node start_pos end_pos =
   with_loc (mk_loc start_pos end_pos) node
+
+let rec last = function
+  | [x] -> x
+  | _ :: xs -> last xs
+  | [] -> invalid_arg "last"
+
+let expr_of_path start_pos end_pos path =
+  match path with
+  | [] -> invalid_arg "expr_of_path"
+  | head :: tail ->
+      List.fold_left
+        (fun acc segment -> mk (Proj (acc, segment)) start_pos end_pos)
+        (mk (Ident head) start_pos end_pos)
+        tail
 %}
 
 %parameter <A : Ast.S>
@@ -163,17 +177,55 @@ opt_comma:
 nonresult_entry:
     | LIDENT COLON expr { mk (Field ($1, $3)) $startpos $endpos }
     | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
+    (* Type entries (spec, section 3.8). *)
+    | UIDENT type_params COLON type_expr
+        { mk (Type_field ($1, $2, $4)) $startpos $endpos }
+    | UIDENT type_params EQUAL type_expr
+        { mk (Type_local ($1, $2, $4)) $startpos $endpos }
     (* Allowed in any block (spec, section 7.1). *)
     | ENSURE expr { mk (Ensure $2) $startpos $endpos }
     | DO expr { mk (Do $2) $startpos $endpos }
+    (* Punning (spec, section 3.2): { x } means { x: x } and { p.name }
+       means { name: p.name }; { Bool } and { m.Bool } re-export a type. *)
+    | value_path
+        { mk (Field (last $1, expr_of_path $startpos $endpos $1)) $startpos $endpos }
+    | type_path
+        { let (prefix, name) = $1 in
+          let rhs = mk (Type_ref (prefix, name)) $startpos $endpos in
+          mk (Type_field (name, [], rhs)) $startpos $endpos }
+
+(* Value names joined by dots. Left-recursive, so that after "a." the next
+   token decides between a longer value path and a type path. *)
+value_path:
+    | LIDENT { [$1] }
+    | value_path DOT LIDENT { $1 @ [$3] }
+
+(* A type name, optionally reached through a value path: types are members
+   of records, not of other types, so a type name can only come last. *)
+type_path:
+    | UIDENT { ([], $1) }
+    | value_path DOT UIDENT { ($1, $3) }
+
+(* Ordering(A), Result(A, E): the parameters of a type constructor. *)
+type_params:
+    | { [] }
+    | LPAREN type_param_list RPAREN { $2 }
+
+type_param_list:
+    | UIDENT { [$1] }
+    | UIDENT COMMA { [$1] }
+    | UIDENT COMMA type_param_list { $1 :: $3 }
 
 result_entry:
     | RESULT expr { mk (Result $2) $startpos $endpos }
 
 type_expr:
-    | UIDENT { mk (Type_ident $1) $startpos $endpos }
+    | type_path
+        { let (prefix, name) = $1 in mk (Type_ref (prefix, name)) $startpos $endpos }
     | TYPE_VAR { mk (Type_var $1) $startpos $endpos }
-    | UIDENT LPAREN type_expr_args RPAREN { mk (Type_apply ($1, $3)) $startpos $endpos }
+    | type_path LPAREN type_expr_args RPAREN
+        { let (prefix, name) = $1 in
+          mk (Type_apply (prefix, name, $3)) $startpos $endpos }
     | LBRACE type_record_fields RBRACE { mk (Type_record $2) $startpos $endpos }
 
 type_expr_args:

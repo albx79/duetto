@@ -80,7 +80,7 @@ Struct   ::= "{" Entries "}"
 Entries  ::= (Entry ("," Entry)* ","?)?
 
 Entry    ::= name ":" Expr             -- field
-           | Path                      -- punned field: { x }, { p.name }, { Bool }
+           | Path                      -- punned field or type: { x }, { p.name }, { Bool }, { m.Bool }
            | name "=" Expr             -- local
            | TypeName TypeParams? ":" TypeExpr   -- public type
            | TypeName TypeParams? "=" TypeExpr   -- private type
@@ -88,13 +88,16 @@ Entry    ::= name ":" Expr             -- field
            | ensure Expr               -- any block; checked in tests (section 7.1)
            | do Expr                   -- an effect; Expr : {}
            | "<<" Expr                 -- block result; last entry
+
+Path     ::= (name ".")* (name | TypeName)
 ```
 
 Here `name` starts with a lowercase letter and `TypeName` with an uppercase letter (section 3.8).
 
 - **Fields** (`name: expr`) are part of the struct's type and value. At file level, they are the module's exports.
 - **Locals** (`name = expr`) are visible to later entries but are not part of the struct. At file level, they are private. Types follow the same `:` and `=` rule (section 3.8).
-- **Punning** works for names and paths only: `{ x }` means `{ x: x }`, and `{ p.name }` means `{ name: p.name }`.
+- **Punning** works for paths only: `{ x }` means `{ x: x }`, and `{ p.name }` means `{ name: p.name }`. A path that ends in a type name binds a public type: `{ m.Bool }` means `{ Bool: m.Bool }` (section 3.8).
+- **Paths** go through values only. Types are members of records, not of other types, so a type name can only be the last segment: `m.Bool` is a path, but `Bool.x` and `M.Bool` are not.
 - **Spec entries** contribute no fields.
 
 ### 3.3 Blocks
@@ -194,7 +197,7 @@ Pair = { first: Num, second: Num },                  # private type
 ```
 
 - Parameters at the head of an entry, as in `Ordering(A): ...`, can only mean a type constructor, since values have no `name(params)` form.
-- Punning works for types: `{ Bool }` re-exports a type from elsewhere.
+- Punning works for types: `{ Bool }` and `{ m.Bool }` re-export a type from elsewhere.
 - **Naming.** Value names, including field names and labels after the `'`, are snake_case: a lowercase letter or `_`, then lowercase letters, digits and `_`, as in `read_file` and `'not_found`. Type names are PascalCase: an uppercase letter, then letters and digits, with no `_`, as in `OrderingResult`. Other spellings, such as `readFile` or `Ordering_Result`, are lexical errors.
 
 **Type members are transparent and static.** Because a file is a struct and structs are first-class records, public types are members of a record type. For now they are transparent aliases: `m.Bool` is another name for `'true | 'false`, so no dependent typing is needed. Type members exist only at compile time and do not take part in a record's runtime value, its exactness, or `==`. Abstract types, where a type member would become genuinely dependent, are deferred (section 13.2).
@@ -211,7 +214,7 @@ Pair = { first: Num, second: Num },                  # private type
 - open record types `{ f1: T1, .. }` and `{ f1: T1, ..?R }`
 - function types `(T1, ..., Tn) -> R`
 - the bottom type `Never`, the type of expressions that do not return (such as a raise)
-- named type aliases `Name(...)`
+- named type aliases `Name` and `Name(...)`, which may be reached through a path, as in `m.Bool` and `m.Ordering(Num)` (section 3.8)
 
 ```duetto
 Bool: 'true | 'false,
