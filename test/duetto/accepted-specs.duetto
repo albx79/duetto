@@ -8,32 +8,38 @@ spec A2 {
     ensure x == "Hello, Ada"
 },
 
+spec A4 {
+    x = some(?A),
+    ensure identity(x) == x,
+},
+
 spec A5 {
-    ensure identity(5) == 5
-},
-
-spec A9 {
-    ensure empty() == []
-},
-
-spec A14 P {
-    ensure load_settings("p").theme == "dark"
-},
-
-spec A14 Q {
-    ensure load_settings("q") == {
-        theme: "light", size: 12
-    }
-},
-
-spec A15 {
-    ensure divmod(7, 2).div == 3,
-    ensure divmod(7, 2).mod == 1,
+    x = some(?A),
+    ensure identity(x) == x,
+    ensure identity(5) == 5,
 },
 
 spec A6 {
     ensure f('true) == 1,
     ensure f('false) == 0,
+},
+
+spec A7 {
+    x = some(?A),
+    ensure pick(x, x) == x,
+    y = some(?A),
+    z = some(?B),
+    ensure pick(y, z) == y,
+},
+
+spec A8 {
+    xs = some([Num]),
+    ensure length(reverse(xs)) == length(xs),
+    ensure reverse([1, 2]) == [2, 1],
+},
+
+spec A9 {
+    ensure empty() == []
 },
 
 spec A11 {
@@ -53,27 +59,17 @@ spec A13 {
     ensure c.compare(1, 2) == 'lt,
 },
 
-spec A4 {
-    x = some(?A),
-    ensure identity(x) == x,
+spec A14 P {
+    ensure load_settings("p").theme == "dark"
 },
 
-spec A5 {
-    x = some(?A),
-    ensure identity(x) == x,
-    ensure identity(5) == 5,
+spec A14 Q {
+    ensure load_settings("q") == {
+        theme: "light", size: 12
+    }
 },
 
-spec A7 {
-    x = some(?A),
-    ensure pick(x, x) == x,
-    y = some(?A),
-    z = some(?B),
-    ensure pick(y, z) == y,
-},
-
-spec A8 {
-    xs = some([Num]),
-    ensure length(reverse(xs)) == length(xs),
-    ensure reverse([1, 2]) == [2, 1],
+spec A15 {
+    ensure divmod(7, 2).div == 3,
+    ensure divmod(7, 2).mod == 1,
 },
