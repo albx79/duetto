@@ -145,7 +145,7 @@ let () =
     Printf.printf "Result: %s\n" (show_parsed_expr result)
   with
   | Duetto.Diagnostic.Error error ->
-      Printf.eprintf "Lexical error: %s\n" (Duetto.Diagnostic.string_of_error error);
+      Printf.eprintf "Error: %s\n" (Duetto.Diagnostic.string_of_error error);
       exit 1
   | Failure message ->
       Printf.eprintf "%s\n" message;

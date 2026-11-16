@@ -18,12 +18,15 @@ module Make_parse
   end)
   (L : sig
     val token : Lexing.lexbuf -> P.token
+    val describe : P.token -> string option
   end) =
 struct
   let parse_with checkpoint lexbuf =
     let module I = P.MenhirInterpreter in
 
-    let rec loop checkpoint =
+    (* [last] is the most recent token and its start: on an error, it is
+       the token the parser could not accept. *)
+    let rec loop last checkpoint =
       match checkpoint with
       | I.InputNeeded _ ->
           let token = L.token lexbuf in
@@ -35,34 +38,36 @@ struct
             I.offer checkpoint (token, startp, endp)
           in
 
-          loop checkpoint
+          loop (Some (token, startp)) checkpoint
 
       | I.Shifting _
       | I.AboutToReduce _ ->
-          loop (I.resume checkpoint)
+          loop last (I.resume checkpoint)
 
       | I.HandlingError _ ->
-          let pos = Lexing.lexeme_start_p lexbuf in
-          let column = pos.pos_cnum - pos.pos_bol + 1 in
-          let token = Lexing.lexeme lexbuf in
-
+          let (description, pos) =
+            match last with
+            | Some (token, startp) -> (L.describe token, startp)
+            | None -> (None, lexbuf.Lexing.lex_curr_p)
+          in
           let position = {
             Diagnostic.filename = pos.pos_fname;
             line = pos.pos_lnum;
-            column;
+            column = pos.pos_cnum - pos.pos_bol + 1;
           } in
 
-          if token = "" then
-            raise (Diagnostic.Error (
-              Diagnostic.Unexpected_end_of_input { position }
-            ))
-          else
-            raise (Diagnostic.Error (
-              Diagnostic.Unexpected_token {
-                token;
-                position;
-              }
-            ))
+          (match description with
+          | None ->
+              raise (Diagnostic.Error (
+                Diagnostic.Unexpected_end_of_input { position }
+              ))
+          | Some token ->
+              raise (Diagnostic.Error (
+                Diagnostic.Unexpected_token {
+                  token;
+                  position;
+                }
+              )))
 
       | I.Accepted ast ->
           ast
@@ -71,7 +76,7 @@ struct
           failwith "Parser rejected input unexpectedly"
     in
 
-    loop checkpoint
+    loop None checkpoint
 
   let parse lexbuf =
     parse_with (P.Incremental.main lexbuf.Lexing.lex_curr_p) lexbuf

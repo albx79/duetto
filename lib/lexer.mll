@@ -9,6 +9,28 @@ let position_of (pos : Lexing.position) : Diagnostic.position = {
 
 let error e = raise (Diagnostic.Error e)
 
+(* How a token is shown in an error message, as it would be written in the
+   source; None for the end of input. *)
+let describe = function
+  | NUM n -> Some n
+  | STRING s -> Some (Printf.sprintf "%S" s)
+  | LABEL l -> Some ("'" ^ l)
+  | LIDENT x | UIDENT x -> Some x
+  | TYPE_VAR x -> Some ("?" ^ x)
+  | SPEC title -> Some ("spec " ^ title)
+  | CASE -> Some "case" | SOME -> Some "some"
+  | ENSURE -> Some "ensure" | DO -> Some "do"
+  | ARROW -> Some "->" | EQEQ -> Some "==" | RESULT -> Some "<<"
+  | DOTDOT -> Some ".." | CONCAT -> Some "++"
+  | PLUS -> Some "+" | MINUS -> Some "-" | TIMES -> Some "*"
+  | DIV -> Some "/" | MOD -> Some "%"
+  | EQUAL -> Some "=" | COLON -> Some ":" | COMMA -> Some ","
+  | DOT -> Some "." | BAR -> Some "|" | QUESTION -> Some "?"
+  | LPAREN -> Some "(" | RPAREN -> Some ")"
+  | LBRACE -> Some "{" | RBRACE -> Some "}"
+  | LBRACKET -> Some "[" | RBRACKET -> Some "]"
+  | EOF -> None
+
 let keyword_or_ident = function
   | "do" -> DO
   | "case" -> CASE
@@ -16,9 +38,6 @@ let keyword_or_ident = function
   | "ensure" -> ENSURE
   | name -> LIDENT name
 
-(* Advance the line counter past every newline in [text], which was just
-   matched in one lexeme. [Lexing.new_line] only handles a lexeme that ends
-   with the newline. *)
 (* The position of the character at [offset] in the current lexeme. *)
 let position_in_lexeme lexbuf offset : Diagnostic.position =
   let start = Lexing.lexeme_start_p lexbuf in
@@ -56,6 +75,9 @@ let spec_title lexbuf offset title =
     });
   String.concat " " words
 
+(* Advance the line counter past every newline in [text], which was just
+   matched in one lexeme. [Lexing.new_line] only handles a lexeme that ends
+   with the newline. *)
 let skip_newlines lexbuf text =
   let start = Lexing.lexeme_start_p lexbuf in
   String.iteri (fun i c ->

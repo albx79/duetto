@@ -1,20 +1,13 @@
 module A = Duetto.Ast.Unit
 open A
 
-type test_expr = expr
-type test_expr_node = expr_node
-type test_type_expr = type_expr
-type test_type_expr_node = type_expr_node
-type test_struct_entry = struct_entry
-type test_struct_entry_node = struct_entry_node
-
-let parse src =
-  let lexbuf = Lexing.from_string src in
-  Duetto.Parse.parse_expr_unit lexbuf
-
 let failures = ref 0
 
-let check name src expected =
+let parse_expr src = Duetto.Parse.parse_expr_unit (Lexing.from_string src)
+let parse_file src = Duetto.Parse.parse_unit (Lexing.from_string src)
+
+(* [parse] must succeed and give [expected]. *)
+let expect_tree parse name src expected =
   match parse src with
   | actual when actual = expected -> ()
   | actual ->
@@ -27,29 +20,9 @@ let check name src expected =
       Printf.printf "FAIL %s\n  expected parse success\n  actual error: %s\n" name
         (Duetto.Diagnostic.string_of_error e)
 
-let check_error name src =
+(* [parse] must fail, with the message [expected] unless it is "". *)
+let expect_error parse name src expected =
   match parse src with
-  | _ ->
-      incr failures;
-      Printf.printf "FAIL %s\n  expected parse error\n  actual: parse succeeded\n" name
-  | exception Duetto.Diagnostic.Error _ ->
-      ()
-
-let check_file name src expected =
-  match Duetto.Parse.parse_unit (Lexing.from_string src) with
-  | actual when actual = expected -> ()
-  | actual ->
-      incr failures;
-      Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name
-        (show_expr expected)
-        (show_expr actual)
-  | exception Duetto.Diagnostic.Error e ->
-      incr failures;
-      Printf.printf "FAIL %s\n  expected parse success\n  actual error: %s\n" name
-        (Duetto.Diagnostic.string_of_error e)
-
-let check_file_error name src expected =
-  match Duetto.Parse.parse_unit (Lexing.from_string src) with
   | _ ->
       incr failures;
       Printf.printf "FAIL %s\n  expected parse error\n  actual: parse succeeded\n" name
@@ -60,6 +33,11 @@ let check_file_error name src expected =
         Printf.printf "FAIL %s\n  expected error: %s\n  actual error:   %s\n"
           name expected actual
       end
+
+let check = expect_tree parse_expr
+let check_error name src = expect_error parse_expr name src ""
+let check_file = expect_tree parse_file
+let check_file_error = expect_error parse_file
 
 (* Files under test/duetto that must parse. *)
 let check_accepted_file path =
@@ -77,6 +55,14 @@ let check_accepted_file path =
 
 let () =
   check_accepted_file "duetto/accepted-specs.duetto";
+  check_file_error "error names a string token" "x: \"abc\" \"def\""
+    "Unexpected token '\"def\"' at :1:10";
+  check_file_error "error names a spec token" "x: 1 spec title {}"
+    "Unexpected token 'spec title' at :1:6";
+  check_file_error "error names a punctuation token" "x: (1"
+    "Unexpected end of input at :1:6";
+  check_file_error "error names a label token" "x: 1 'a"
+    "Unexpected token ''a' at :1:6";
   check "label" "'eq" (Label "eq");
   check "label comparison" "f(x) == 'lt" (Eq (Call (Ident "f", [Ident "x"]), Label "lt"));
   check "case on labels" "case r { 'lt -> \"less\", 'eq -> \"equal\", 'gt -> \"greater\" }"
