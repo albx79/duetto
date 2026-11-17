@@ -9,14 +9,14 @@
 %token <string> UIDENT   (* type names *)
 %token <string> TYPE_VAR (* ?Name, the first occurrence of a type variable, without the ? *)
 %token <string> SPEC     (* spec keyword with its free-text title *)
-%token CASE SOME ENSURE DO
+%token CASE SOME ENSURE DO DOUBLE
 %token ARROW EQEQ RESULT DOTDOT CONCAT
 %token PLUS
 %token MINUS
 %token TIMES
 %token DIV
 %token MOD
-%token EQUAL COLON COMMA DOT BAR QUESTION
+%token EQUAL COLON COMMA DOT BAR QUESTION CARET
 %token LPAREN
 %token RPAREN
 %token LBRACE RBRACE LBRACKET RBRACKET

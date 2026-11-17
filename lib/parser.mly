@@ -97,6 +97,8 @@ expr:
     | LABEL                { mk (Label $1) $startpos $endpos }
     | CASE expr LBRACE case_branches RBRACE
         { mk (Case ($2, $4)) $startpos $endpos }
+    | DOUBLE LBRACE stubs RBRACE
+        { mk (Double $3) $startpos $endpos }
     | LIDENT ARROW expr    { mk (Lambda ([$1], $3)) $startpos $endpos }
     | LPAREN RPAREN ARROW expr { mk (Lambda ([], $4)) $startpos $endpos }
     | LPAREN LIDENT RPAREN ARROW expr { mk (Lambda ([$2], $5)) $startpos $endpos }
@@ -133,19 +135,50 @@ case_branch:
 
 pattern:
     | LABEL { mk (Label_pattern $1) $startpos $endpos }
+    | NUM { mk (Num_pattern $1) $startpos $endpos }
+    | STRING { mk (String_pattern $1) $startpos $endpos }
+    | LIDENT { mk (Binder $1) $startpos $endpos }
+    | CARET LIDENT { mk (Pinned $2) $startpos $endpos }
+    | SOME LPAREN type_expr RPAREN { mk (Some_pattern $3) $startpos $endpos }
     | LBRACE record_pattern_body RBRACE
         { let (fields, is_open) = $2 in
           mk (if is_open then Open_record_pattern fields else Record_pattern fields)
             $startpos $endpos }
 
-(* Field names, comma-separated, optionally ending with "..", which makes the
+(* Fields, comma-separated, optionally ending with "..", which makes the
    pattern open; a trailing comma is allowed when there is no "..". *)
 record_pattern_body:
     | { ([], false) }
     | DOTDOT { ([], true) }
-    | LIDENT { ([$1], false) }
-    | LIDENT COMMA record_pattern_body
+    | record_pattern_field { ([$1], false) }
+    | record_pattern_field COMMA record_pattern_body
         { let (fields, is_open) = $3 in ($1 :: fields, is_open) }
+
+record_pattern_field:
+    | LIDENT COLON pattern { ($1, $3) }
+    (* Punning: { f } is { f: f }. *)
+    | LIDENT { ($1, mk (Binder $1) $startpos $endpos) }
+
+(* The stubs of a double (spec, section 11): at least one, comma-separated,
+   with an optional trailing comma. *)
+stubs:
+    | stub { [$1] }
+    | stub COMMA { [$1] }
+    | stub COMMA stubs { $1 :: $3 }
+
+stub:
+    | LIDENT LPAREN stub_arguments RPAREN responses
+        { { stub_name = $1; arguments = $3; responses = $5 } }
+
+stub_arguments:
+    | { [] }
+    | pattern { [$1] }
+    | pattern COMMA stub_arguments { $1 :: $3 }
+
+(* << r1 << r2 ...: the responses to successive calls. *)
+responses:
+    | RESULT expr { [$2] }
+    | RESULT expr responses { $2 :: $3 }
 
 lambda_params_rest:
     | { [] }
@@ -342,7 +375,10 @@ simple_type_expr:
     | type_path LPAREN type_expr_args RPAREN
         { let (prefix, name) = $1 in
           mk (Type_apply (prefix, name, $3)) $startpos $endpos }
-    | LBRACE type_record_fields RBRACE { mk (Type_record $2) $startpos $endpos }
+    | LBRACE type_record_body RBRACE
+        { match $2 with
+          | (fields, None) -> mk (Type_record fields) $startpos $endpos
+          | (fields, Some row) -> mk (Type_open_record (fields, row)) $startpos $endpos }
     | LBRACKET type_expr RBRACKET { mk (Type_list $2) $startpos $endpos }
 
 type_expr_args:
@@ -350,14 +386,20 @@ type_expr_args:
     | type_expr COMMA { [$1] }
     | type_expr COMMA type_expr_args { $1 :: $3 }
 
-type_record_fields:
-    | { [] }
-    | type_record_field_list { $1 }
+(* Fields, comma-separated, optionally ending with a row (spec, section 4.4),
+   which makes the record open; a trailing comma is allowed when there is no
+   row, as in record patterns. *)
+type_record_body:
+    | { ([], None) }
+    | row { ([], Some $1) }
+    | type_record_field { ([$1], None) }
+    | type_record_field COMMA type_record_body
+        { let (fields, row) = $3 in ($1 :: fields, row) }
 
-type_record_field_list:
-    | type_record_field { [$1] }
-    | type_record_field COMMA { [$1] }
-    | type_record_field COMMA type_record_field_list { $1 :: $3 }
+row:
+    | DOTDOT { Anonymous_row }
+    | DOTDOT TYPE_VAR { Row_var $2 }
+    | DOTDOT UIDENT { Row_ref $2 }
 
 type_record_field:
     | LIDENT COLON type_expr { ($1, $3) }

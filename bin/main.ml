@@ -45,6 +45,7 @@ let rec eval (expr : A.expr) =
       | A.Type_ref _ -> failwith "Only numbers can be summoned"
       | A.Type_apply _ -> failwith "Type application is not supported yet"
       | A.Type_list _ -> failwith "Lists cannot be summoned yet"
+      | A.Type_open_record _ -> failwith "Open records cannot be summoned yet"
       | A.Type_label l -> Label l
       | A.Type_union _ -> failwith "Unions cannot be summoned yet"
       | A.Type_function _ -> failwith "Functions cannot be summoned yet"
@@ -62,24 +63,29 @@ let rec eval (expr : A.expr) =
       failwith "Runtime evaluator does not support ++ yet"
   | A.Eq (lhs, rhs) -> Label (if atom_eq (eval lhs) (eval rhs) then "true" else "false")
   | A.Label l -> Label l
+  | A.Double _ -> failwith "Doubles are not supported yet"
   | A.Case (scrutinee, branches) ->
       let value = eval scrutinee in
-      let has_fields fields =
-        match value with
-        | Tree entries -> List.for_all (fun f -> List.mem_assoc f entries) fields
-        | _ -> false
-      in
-      let matches (pattern : A.pattern) =
+      (* Binders match but bind nothing, since this evaluator has no
+         identifiers yet. *)
+      let rec matches (pattern : A.pattern) value =
         match pattern.node, value with
         | A.Label_pattern l, Label m -> l = m
+        | A.Num_pattern n, Atom m -> eval_num n = m
+        | A.Binder _, _ | A.Some_pattern _, _ -> true
+        | A.Pinned _, _ -> failwith "Pinned patterns are not supported yet"
         | A.Record_pattern fields, Tree entries ->
-            has_fields fields && List.length fields = List.length entries
-        | A.Open_record_pattern fields, Tree _ -> has_fields fields
+            List.length fields = List.length entries && fields_match fields entries
+        | A.Open_record_pattern fields, Tree entries -> fields_match fields entries
         | _ -> false
+      and fields_match fields entries =
+        List.for_all (fun (name, p) ->
+          match List.assoc_opt name entries with
+          | Some v -> matches p v
+          | None -> false)
+          fields
       in
-      (* Record patterns bind their fields, which this evaluator cannot use
-         yet, since it has no identifiers. *)
-      (match List.find_opt (fun (b : A.case_branch) -> matches b.pattern) branches with
+      (match List.find_opt (fun (b : A.case_branch) -> matches b.pattern value) branches with
       | Some branch -> eval branch.body
       | None -> failwith "case: no branch matches the value")
   | A.Add (a, b) ->

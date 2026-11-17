@@ -20,6 +20,7 @@ let show = function
   | LPAREN -> "LPAREN" | RPAREN -> "RPAREN"
   | LBRACE -> "LBRACE" | RBRACE -> "RBRACE"
   | LBRACKET -> "LBRACKET" | RBRACKET -> "RBRACKET"
+  | DOUBLE -> "DOUBLE" | CARET -> "CARET"
   | EOF -> "EOF"
 
 let tokens src =
@@ -64,6 +65,8 @@ let () =
       UIDENT "Int"; UIDENT "Ordering" ];
   check "identifier character classes" "fooBar 'foo_bar"
     [ LIDENT "foo"; UIDENT "Bar"; LABEL "foo_bar" ];
+  check "double and pins" "double ^x doubled"
+    [ DOUBLE; CARET; LIDENT "x"; LIDENT "doubled" ];
   check "type variables" "?A ?Key"
     [ TYPE_VAR "A"; TYPE_VAR "Key" ];
   check "question mark apart from a type name" "? A ?a"

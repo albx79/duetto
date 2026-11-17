@@ -8,6 +8,13 @@ spec A2 {
     ensure x == "Hello, Ada"
 },
 
+spec A3 {
+    x = greet({ name: "Ada" }),
+    ensure x == "Hello, Ada",
+    p = some({ name: String, .. }),
+    ensure greet(p) == "Hello, " ++ p.name,
+},
+
 spec A4 {
     x = some(?A),
     ensure identity(x) == x,
@@ -72,4 +79,13 @@ spec A14 Q {
 spec A15 {
     ensure divmod(7, 2).div == 3,
     ensure divmod(7, 2).mod == 1,
+},
+
+spec U1 {
+    fs = double {
+        read_text("ok.cfg") << { ok: "content" },
+        read_text("a.cfg") << { not_found: { path: "a.cfg" } },
+    },
+    ensure read_file(fs, "ok.cfg") == { ok: "content" },
+    ensure read_file(fs, "a.cfg") == { err: "missing: a.cfg" },
 },

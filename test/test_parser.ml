@@ -132,17 +132,17 @@ let () =
     ]));
   check "case on records" "case e { { num } -> num, { add } -> eval(add.l) + eval(add.r) }"
     (Case (Ident "e", [
-      { pattern = Record_pattern ["num"]; body = Ident "num" };
-      { pattern = Record_pattern ["add"];
+      { pattern = Record_pattern [("num", Binder "num")]; body = Ident "num" };
+      { pattern = Record_pattern [("add", Binder "add")];
         body = Add (Call (Ident "eval", [Proj (Ident "add", "l")]),
                     Call (Ident "eval", [Proj (Ident "add", "r")])) };
     ]));
   check "record patterns" "case r { {} -> 0, { a, b } -> 1, { a, } -> 2, { a, b, .. } -> 3, { .. } -> 4 }"
     (Case (Ident "r", [
       { pattern = Record_pattern []; body = Num "0" };
-      { pattern = Record_pattern ["a"; "b"]; body = Num "1" };
-      { pattern = Record_pattern ["a"]; body = Num "2" };
-      { pattern = Open_record_pattern ["a"; "b"]; body = Num "3" };
+      { pattern = Record_pattern [("a", Binder "a"); ("b", Binder "b")]; body = Num "1" };
+      { pattern = Record_pattern [("a", Binder "a")]; body = Num "2" };
+      { pattern = Open_record_pattern [("a", Binder "a"); ("b", Binder "b")]; body = Num "3" };
       { pattern = Open_record_pattern []; body = Num "4" };
     ]));
   check "case branch with a block" "case x { 'a -> { y = 1, <<y } }"
@@ -163,10 +163,83 @@ let () =
     (Add (Case (Ident "x", [{ pattern = Label_pattern "a"; body = Num "1" }]), Num "1"));
   check_error "case needs a branch" "case x {}";
   check_error "case needs braces" "case x 'a -> 1";
-  check_error "pattern is not an expression" "case x { y -> 1 }";
+  check "binder pattern" "case x { 'a -> 1, y -> 2 }"
+    (Case (Ident "x", [
+      { pattern = Label_pattern "a"; body = Num "1" };
+      { pattern = Binder "y"; body = Num "2" };
+    ]));
+  check_error "pattern is not an expression" "case x { f(y) -> 1 }";
   check_error "open pattern ends with .." "case x { { .., a } -> 1 }";
   check_error "no comma after .." "case x { { a, .., } -> 1 }";
-  check_error "no field values in patterns" "case x { { a: 1 } -> 1 }";
+  check "literal and sub-patterns" "case x { 0 -> 'zero, \"one\" -> 'one, { a: 1, b: { c }, .. } -> 'rec, n -> 'other }"
+    (Case (Ident "x", [
+      { pattern = Num_pattern "0"; body = Label "zero" };
+      { pattern = String_pattern "one"; body = Label "one" };
+      { pattern = Open_record_pattern [
+          ("a", Num_pattern "1");
+          ("b", Record_pattern [("c", Binder "c")]);
+        ]; body = Label "rec" };
+      { pattern = Binder "n"; body = Label "other" };
+    ]));
+  check "pinned and typed patterns" "case x { ^expected -> 'same, { ok: some(Num) } -> 'num, other -> 'other }"
+    (Case (Ident "x", [
+      { pattern = Pinned "expected"; body = Label "same" };
+      { pattern = Record_pattern [("ok", Some_pattern (Type_ref ([], "Num")))]; body = Label "num" };
+      { pattern = Binder "other"; body = Label "other" };
+    ]));
+  check "renaming a field" "case r { { err: e } -> e }"
+    (Case (Ident "r", [{ pattern = Record_pattern [("err", Binder "e")]; body = Ident "e" }]));
+  check_error "pin needs a value name" "case x { ^Foo -> 1 }";
+  check_error "pin is not an expression" "^x";
+  check_error "no expressions in patterns" "case x { a + 1 -> 1 }";
+
+  (* Doubles (spec, section 11). *)
+  check "double" "double { read_text(\"a.cfg\") << \"content\" }"
+    (Double [{ stub_name = "read_text"; arguments = [String_pattern "a.cfg"];
+               responses = [String "content"] }]);
+  check "double with several stubs" "double { read_text(\"ok.cfg\") << { ok: \"content\" }, read_text(\"a.cfg\") << { not_found: { path: \"a.cfg\" } }, }"
+    (Double [
+      { stub_name = "read_text"; arguments = [String_pattern "ok.cfg"];
+        responses = [Record [Field ("ok", String "content")]] };
+      { stub_name = "read_text"; arguments = [String_pattern "a.cfg"];
+        responses = [Record [Field ("not_found", Record [Field ("path", String "a.cfg")])]] };
+    ]);
+  check "response chain" "double { fetch(\"a\") << 'timeout << 'timeout << { ok: \"data\" } }"
+    (Double [{ stub_name = "fetch"; arguments = [String_pattern "a"];
+               responses = [Label "timeout"; Label "timeout"; Record [Field ("ok", String "data")]] }]);
+  check "stub argument patterns" "double { f(some(String), path, ^cfg, { id: 1, .. }, 'a, 2) << path }"
+    (Double [{ stub_name = "f";
+               arguments = [
+                 Some_pattern (Type_ref ([], "String"));
+                 Binder "path";
+                 Pinned "cfg";
+                 Open_record_pattern [("id", Num_pattern "1")];
+                 Label_pattern "a";
+                 Num_pattern "2";
+               ];
+               responses = [Ident "path"] }]);
+  check "stub without arguments" "double { now() << 1 << 2 }"
+    (Double [{ stub_name = "now"; arguments = []; responses = [Num "1"; Num "2"] }]);
+  check "response is any expression" "double { f(x) << { y = x + 1, <<y } << (z -> z) << g(x) }"
+    (Double [{ stub_name = "f"; arguments = [Binder "x"];
+               responses = [
+                 Block ([Local ("y", Add (Ident "x", Num "1"))], Ident "y");
+                 Lambda (["z"], Ident "z");
+                 Call (Ident "g", [Ident "x"]);
+               ] }]);
+  check "double in a spec" "{ fs = double { read_text(p) << p }, <<fs }"
+    (Block ([
+      Local ("fs", Double [{ stub_name = "read_text"; arguments = [Binder "p"];
+                             responses = [Ident "p"] }]);
+    ], Ident "fs"));
+  check_error "double needs a stub" "double {}";
+  check_error "stub needs a response" "double { f(1) }";
+  check_error "response needs an expression" "double { f(1) << }";
+  check_error "stub needs parentheses" "double { f << 1 }";
+  check_error "stubs need commas" "double { f(1) << 1 g(2) << 2 }";
+  check_error "no fields in a double" "double { f: 1 }";
+  check_error "stub arguments are patterns" "double { f(a + 1) << 1 }";
+  check_error "double is a keyword" "{ double = 1 }";
   check_error "branches need commas" "case x { 'a -> 1 'b -> 2 }";
 
   check_file "spec" "spec it works { ensure f(1) == 2 }"
@@ -359,6 +432,35 @@ let () =
       ];
     ])));
 
+  check "open record type" "some({ name: String, .. })"
+    (Some_val (Type_open_record ([("name", Type_ref ([], "String"))], Anonymous_row)));
+  check "open record type with two fields" "some({ a: Num, b: String, .. })"
+    (Some_val (Type_open_record (
+      [("a", Type_ref ([], "Num")); ("b", Type_ref ([], "String"))], Anonymous_row)));
+  check "open record type without fields" "some({ .. })"
+    (Some_val (Type_open_record ([], Anonymous_row)));
+  check "named row" "some({ name: String, ..?R })"
+    (Some_val (Type_open_record ([("name", Type_ref ([], "String"))], Row_var "R")));
+  check "row without fields" "some({ ..?R })"
+    (Some_val (Type_open_record ([], Row_var "R")));
+  check "shared row" "some(({ name: String, ..?R }, String) -> { name: String, ..R })"
+    (Some_val (Type_function (
+      [Type_open_record ([("name", Type_ref ([], "String"))], Row_var "R");
+       Type_ref ([], "String")],
+      Type_open_record ([("name", Type_ref ([], "String"))], Row_ref "R"))));
+  check "open record in a list" "some([{ id: Num, .. }])"
+    (Some_val (Type_list (Type_open_record ([("id", Type_ref ([], "Num"))], Anonymous_row))));
+  check "open record field" "some({ inner: { a: Num, .. } })"
+    (Some_val (Type_record [
+      ("inner", Type_open_record ([("a", Type_ref ([], "Num"))], Anonymous_row));
+    ]));
+  check "exact record keeps its trailing comma" "some({ a: Num, })"
+    (Some_val (Type_record [("a", Type_ref ([], "Num"))]));
+  check_error "row must come last" "some({ .., a: Num })";
+  check_error "no comma after the row" "some({ a: Num, .., })";
+  check_error "one row only" "some({ a: Num, .., .. })";
+  check_error "row variable is a type name" "some({ a: Num, ..?r })";
+  check_error "row needs a comma before it" "some({ a: Num .. })";
   check "label type" "some('true)" (Some_val (Type_label "true"));
   check "label union" "some('lt | 'eq | 'gt)"
     (Some_val (Type_union [Type_label "lt"; Type_label "eq"; Type_label "gt"]));

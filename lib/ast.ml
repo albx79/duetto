@@ -65,6 +65,9 @@ module Make (W : WRAP) = struct
        path like Type_ref, applied to at least one argument. *)
     | Type_apply of string list * string * type_expr list
     | Type_record of (string * type_expr) list
+    (* { f: T, .. }, { f: T, ..?R } or { f: T, ..R }: a record with at least
+       these fields (spec, section 4.4). *)
+    | Type_open_record of (string * type_expr) list * row
     (* 'a, a label singleton type (spec, section 4.2). *)
     | Type_label of string
     (* T1 | ... | Tn with n >= 2, in source order; which members are allowed
@@ -74,6 +77,12 @@ module Make (W : WRAP) = struct
     | Type_list of type_expr
     (* (T1, ..., Tn) -> R (spec, section 4.1); () -> R takes no arguments. *)
     | Type_function of type_expr list * type_expr
+
+  (* The rest of an open record type. *)
+  and row =
+    | Anonymous_row            (* .., a fresh unnamed row variable *)
+    | Row_var of string        (* ..?R, the first occurrence of R *)
+    | Row_ref of string        (* ..R, a later occurrence *)
 
   and struct_entry = struct_entry_node wrapped
   and struct_entry_node =
@@ -95,13 +104,33 @@ module Make (W : WRAP) = struct
     body : expr;
   }
 
+  (* One pattern language for case branches and the stubs of doubles
+     (spec, section 9). *)
   and pattern = pattern_node wrapped
   and pattern_node =
     | Label_pattern of string
-    (* { a, b }: matches only the member whose fields are exactly these. *)
-    | Record_pattern of string list
-    (* { a, b, .. }: matches every member that has these fields. *)
-    | Open_record_pattern of string list
+    | Num_pattern of string
+    | String_pattern of string
+    (* x: matches anything and binds it. *)
+    | Binder of string
+    (* ^x: matches the value of x, already in scope. *)
+    | Pinned of string
+    (* some(T): matches every value of T, binding nothing. *)
+    | Some_pattern of type_expr
+    (* { f: P, ... }: a record with exactly these fields. A field written
+       alone, { f }, is parsed as { f: f }. *)
+    | Record_pattern of (string * pattern) list
+    (* { f: P, ..., .. }: a record with at least these fields. *)
+    | Open_record_pattern of (string * pattern) list
+
+  (* A stub of a double: a function name, a pattern per argument, and the
+     responses to successive calls, the last of which repeats (spec,
+     section 11). *)
+  and stub = {
+    stub_name : string;
+    arguments : pattern list;
+    responses : expr list;
+  }
 
   and expr = expr_node wrapped
   and expr_node =
@@ -109,6 +138,7 @@ module Make (W : WRAP) = struct
     | String of string
     | Label of string
     | Case of expr * case_branch list
+    | Double of stub list
     | Ident of string
     | Proj of expr * string
     | Call of expr * expr list

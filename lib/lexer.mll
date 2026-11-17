@@ -18,14 +18,14 @@ let describe = function
   | LIDENT x | UIDENT x -> Some x
   | TYPE_VAR x -> Some ("?" ^ x)
   | SPEC title -> Some ("spec " ^ title)
-  | CASE -> Some "case" | SOME -> Some "some"
+  | CASE -> Some "case" | SOME -> Some "some" | DOUBLE -> Some "double"
   | ENSURE -> Some "ensure" | DO -> Some "do"
   | ARROW -> Some "->" | EQEQ -> Some "==" | RESULT -> Some "<<"
   | DOTDOT -> Some ".." | CONCAT -> Some "++"
   | PLUS -> Some "+" | MINUS -> Some "-" | TIMES -> Some "*"
   | DIV -> Some "/" | MOD -> Some "%"
   | EQUAL -> Some "=" | COLON -> Some ":" | COMMA -> Some ","
-  | DOT -> Some "." | BAR -> Some "|" | QUESTION -> Some "?"
+  | DOT -> Some "." | BAR -> Some "|" | QUESTION -> Some "?" | CARET -> Some "^"
   | LPAREN -> Some "(" | RPAREN -> Some ")"
   | LBRACE -> Some "{" | RBRACE -> Some "}"
   | LBRACKET -> Some "[" | RBRACKET -> Some "]"
@@ -36,6 +36,7 @@ let keyword_or_ident = function
   | "case" -> CASE
   | "some" -> SOME
   | "ensure" -> ENSURE
+  | "double" -> DOUBLE
   | name -> LIDENT name
 
 (* The position of the character at [offset] in the current lexeme. *)
@@ -169,6 +170,8 @@ rule token = parse
   | '.' { DOT }
   | '|' { BAR }
   | '?' { QUESTION }
+  (* ^name pins a value in a pattern (spec, section 9); provisional. *)
+  | '^' { CARET }
   | '(' { LPAREN }
   | ')' { RPAREN }
   | '{' { LBRACE }
