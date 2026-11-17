@@ -378,6 +378,27 @@ Calling a closure is the only form of dynamic dispatch. Calling `ord.compare(a, 
 
 There is **no type-directed dispatch**: no methods looked up by runtime type, no type tests, no runtime overload resolution. Code cannot observe the runtime type of a value. This preserves parametricity, which `some(?A)` relies on (section 7.3).
 
+**Comparisons under an ordering (decided).** There is no built-in `<` that works for some types and not others: a comparison always names the ordering it uses, written before a `?`.
+
+```duetto
+ensure lexicographic ? "bar" < "foo",
+ensure by_age ? ada <= bob,
+```
+
+| Form | Means | Holds when `ord.compare(a, b)` is |
+| --- | --- | --- |
+| `ord ? a < b` | `a` comes before `b` | `'lt` |
+| `ord ? a <= b` | `a` does not come after `b` | `'lt` or `'eq` |
+| `ord ? a > b` | `a` comes after `b` | `'gt` |
+| `ord ? a >= b` | `a` does not come before `b` | `'gt` or `'eq` |
+| `ord ? a ~~ b` | `a` and `b` are equivalent under `ord` | `'eq` |
+
+- **It is sugar for a call**: `ord ? a < b` means `case ord.compare(a, b) { 'lt -> 'true, 'eq -> 'false, 'gt -> 'false }`, and its type is `'true | 'false`. Any value with a field `compare: (A, A) -> 'lt | 'eq | 'gt` can be the ordering, matched by structure, so this is ordinary closure dispatch, not dispatch on types.
+- **`~~` is not `==`.** `==` is structural equality, while `~~` is equivalence under an ordering, which can be coarser: a case-insensitive ordering makes `"a"` and `"A"` equivalent but not equal. A distinct symbol keeps the two apart; `~~` was chosen over `=` alone, which would also mean binding, and over a reversed spaceship `>=<`, which would need explaining.
+- **Precedence.** The ordering is a primary expression, such as `by_age`, `people.by_name` or `by(key)`. The operands bind as arithmetic does, so `ord ? x + 1 < y` compares `x + 1` with `y`. A comparison is non-associative, at the level of `==`.
+- **The comparison operators exist only after `?`.** A bare `a < b` is an error that says to name an ordering, as in `ord ? a < b`.
+- **Chained comparisons**, such as `ord ? lo <= x < hi`, are not part of the form for now (section 13.1).
+
 ### 6.3 Case
 
 Label unions, and struct unions (section 9), are consumed with `case`. It is checked for exhaustiveness against the closed union of the scrutinee's type. Branches are comma-separated; a branch body is an expression or a block.
@@ -994,6 +1015,7 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 - **Label sets shared between field checks** (formal core, section 9.2).
 - **Termination.** Reading `some` specs as proofs would require totality of the production functions involved, probably through an opt-in marker. Without it, the logical reading is partial correctness.
 - **Exact syntax** for imports.
+- **Chained comparisons** (section 6.2). `ord ? lo <= x < hi`, as in Python, would make range checks read naturally. The grammar of comparisons should leave room for it.
 - **Patterns** (section 9). One pattern language serves `case` and doubles; the sigil `^` for pinned values is provisional. Open: literal patterns on a scrutinee that is not a union (recommendation: allow them, since they inspect values, and a final binder keeps the `case` exhaustive); a form that names and types at once, such as `path @ some(String)` (recommendation: defer until a stub needs it, since another stub or a typed wildcard usually fixes a binder's type); and patterns in lambda parameters (not planned for now).
 
 ### 13.2 Deferred
