@@ -39,6 +39,7 @@ let rec eval (expr : A.expr) =
       failwith "Runtime evaluator does not support function calls yet"
   | A.Lambda _ ->
       failwith "Runtime evaluator does not support lambdas yet"
+  | A.Every _ -> failwith "every is not supported yet"
   | A.Some_val typ ->
     let rec summon_value (typ_desc : A.type_expr) = match typ_desc.node with
       | A.Type_ref ([], "Num") -> Atom (Random.int 100)
@@ -127,7 +128,14 @@ and eval_field (entry : A.struct_entry) =
             "ensure at %d:%d needs a true or false condition" pos.line pos.column))
   | A.Do _ ->
       failwith "Do entries are not supported"
-  | A.Spec (title, body) ->
+  | A.Spec (segments, body) ->
+      let title =
+        String.concat "" (List.map (fun (s : A.title_segment) ->
+          match s.node with
+          | A.Title_text t -> t
+          | A.Title_mark (path, name) -> "`" ^ String.concat "." (path @ [name]) ^ "`")
+          segments)
+      in
       (* Run the spec now: its locals and ensures, in order. A spec adds no
          field to the struct. *)
       (try List.iter (fun entry -> ignore (eval_field entry)) body

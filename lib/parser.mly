@@ -50,6 +50,17 @@ let check_file_entries entries result =
 
 let nodes entries = List.map (fun (_, _, entry) -> entry) entries
 
+(* A spec title's segments, as AST nodes with their own locations. *)
+let spec_title (title : Spec_title.t) =
+  List.map (fun (segment, startpos, endpos) ->
+    let node =
+      match segment with
+      | Spec_title.Text s -> Title_text s
+      | Spec_title.Mark (path, name) -> Title_mark (path, name)
+    in
+    mk node startpos endpos)
+    title
+
 let rec last = function
   | [x] -> x
   | _ :: xs -> last xs
@@ -117,6 +128,7 @@ expr:
     | LPAREN LIDENT RPAREN { mk (Ident $2) $startpos $endpos }
     | LIDENT %prec below_RPAREN { mk (Ident $1) $startpos $endpos }
     | SOME LPAREN type_expr RPAREN { mk (Some_val $3) $startpos $endpos }
+    | EVERY LPAREN type_expr RPAREN { mk (Every $3) $startpos $endpos }
     | struct_expr          { $1 }
     | list_expr            { $1 }
     | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
@@ -248,7 +260,7 @@ file_entry:
     | nonresult_entry { $1 }
     | SPEC LBRACE spec_body RBRACE
         { (Other_role, diagnostic_position $startpos,
-           mk (Spec ($1, $3)) $startpos $endpos) }
+           mk (Spec (spec_title $1, $3)) $startpos $endpos) }
 
 (* A spec in a nested struct is parsed, so that the error can say what is
    wrong instead of reporting an unexpected token. *)
@@ -256,7 +268,7 @@ struct_entry:
     | nonresult_entry { $1 }
     | SPEC LBRACE spec_body RBRACE
         { error (Diagnostic.Nested_spec {
-            title = $1;
+            title = Spec_title.to_string $1;
             position = diagnostic_position $startpos;
           }) }
 

@@ -9,7 +9,7 @@ let show = function
   | LIDENT x -> "LIDENT " ^ x
   | UIDENT x -> "UIDENT " ^ x
   | TYPE_VAR x -> "TYPE_VAR " ^ x
-  | SPEC t -> Printf.sprintf "SPEC %S" t
+  | SPEC t -> Printf.sprintf "SPEC %S" (Duetto.Spec_title.to_string t)
   | CASE -> "CASE" | SOME -> "SOME" | ENSURE -> "ENSURE" | DO -> "DO"
   | ARROW -> "ARROW" | EQEQ -> "EQEQ" | RESULT -> "RESULT"
   | DOTDOT -> "DOTDOT" | CONCAT -> "CONCAT"
@@ -20,7 +20,7 @@ let show = function
   | LPAREN -> "LPAREN" | RPAREN -> "RPAREN"
   | LBRACE -> "LBRACE" | RBRACE -> "RBRACE"
   | LBRACKET -> "LBRACKET" | RBRACKET -> "RBRACKET"
-  | DOUBLE -> "DOUBLE" | CARET -> "CARET"
+  | EVERY -> "EVERY" | DOUBLE -> "DOUBLE" | CARET -> "CARET"
   | LT -> "LT" | LE -> "LE" | GT -> "GT" | GE -> "GE" | EQUIV -> "EQUIV"
   | EOF -> "EOF"
 
@@ -35,9 +35,15 @@ let tokens src =
 
 let failures = ref 0
 
+(* An expected SPEC token, written as its title reads, with backticks around
+   marks. Tokens are compared through [show], which ignores positions, and a
+   title's text determines its segments, since text has no backticks. *)
+let spec title =
+  SPEC [ (Duetto.Spec_title.Text title, Lexing.dummy_pos, Lexing.dummy_pos) ]
+
 let check name src expected =
   let actual = tokens src in
-  if actual <> expected then begin
+  if List.map show actual <> List.map show expected then begin
     incr failures;
     Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name
       (String.concat " " (List.map show expected))
@@ -83,15 +89,27 @@ let () =
       TIMES; DIV; MOD; COLON; BAR; QUESTION ];
   check "comments" "x # a comment\ny" [ LIDENT "x"; LIDENT "y" ];
   check "spec title" "spec the answer is 42 {\n  ensure x == 42,\n}"
-    [ SPEC "the answer is 42"; LBRACE; ENSURE; LIDENT "x"; EQEQ; NUM "42";
+    [ spec "the answer is 42"; LBRACE; ENSURE; LIDENT "x"; EQEQ; NUM "42";
       COMMA; RBRACE ];
   check "spec title whitespace is normalised" "spec  a\t b\n\n  c  {}"
-    [ SPEC "a b c"; LBRACE; RBRACE ];
+    [ spec "a b c"; LBRACE; RBRACE ];
   check "spec title keeps # and unbalanced brackets"
     "spec [0, 1) is half-open # not a comment {}"
-    [ SPEC "[0, 1) is half-open # not a comment"; LBRACE; RBRACE ];
+    [ spec "[0, 1) is half-open # not a comment"; LBRACE; RBRACE ];
+  check "law spec title" "spec `Ordering` is symmetric {}"
+    [ spec "`Ordering` is symmetric"; LBRACE; RBRACE ];
+  check "law spec title with two marks" "spec  `Ordering`   agrees\n with `Eq` {}"
+    [ spec "`Ordering` agrees with `Eq`"; LBRACE; RBRACE ];
+  check "qualified mark" "spec `std.Ordering` is total {}"
+    [ spec "`std.Ordering` is total"; LBRACE; RBRACE ];
+  check "title of marks only" "spec `Monoid` {}"
+    [ spec "`Monoid`"; LBRACE; RBRACE ];
+  check "mark followed by punctuation" "spec `Ordering`'s laws {}"
+    [ spec "`Ordering`'s laws"; LBRACE; RBRACE ];
+  check "every" "every(Ordering(?A))"
+    [ EVERY; LPAREN; UIDENT "Ordering"; LPAREN; TYPE_VAR "A"; RPAREN; RPAREN ];
   check "spec title keeps quotes and labels" "spec it's \"quoted\" 'eq {}"
-    [ SPEC "it's \"quoted\" 'eq"; LBRACE; RBRACE ];
+    [ spec "it's \"quoted\" 'eq"; LBRACE; RBRACE ];
   check "spec prefix is an identifier" "specs" [ LIDENT "specs" ];
   check "rigid row" "some({ name: String, ..?R })"
     [ SOME; LPAREN; LBRACE; LIDENT "name"; COLON; UIDENT "String"; COMMA;
@@ -132,7 +150,17 @@ let () =
     "A spec title cannot contain '}', at :2:8 (is the '{' after the title missing?)";
   check_error "missing brace after spec title" "spec a\n  ensure x == 1,\n}"
     "A spec title cannot contain '}', at :3:1 (is the '{' after the title missing?)";
-  check_error "backtick in spec title" "spec laws of `Ordering` {}"
-    "A spec title cannot contain '`', at :1:14";
+  check_error "unclosed mark" "spec laws of `Ordering {}"
+    "The '`' at :1:14 in a spec title is not closed";
+  check_error "empty mark" "spec `` is empty {}"
+    "The mark `` at :1:6 is not an interface name: a mark is a type name, such as `Ordering` or `m.Ordering`";
+  check_error "lowercase mark" "spec `ordering` is total {}"
+    "The mark `ordering` at :1:6 is not an interface name: a mark is a type name, such as `Ordering` or `m.Ordering`";
+  check_error "mark with spaces" "spec `Ordering is` total {}"
+    "The mark `Ordering is` at :1:6 is not an interface name: a mark is a type name, such as `Ordering` or `m.Ordering`";
+  check_error "mark ending with a dot" "spec `m.` is odd {}"
+    "The mark `m.` at :1:6 is not an interface name: a mark is a type name, such as `Ordering` or `m.Ordering`";
+  check_error "mark position on a later line" "spec laws\n  of `bad` {}"
+    "The mark `bad` at :2:6 is not an interface name: a mark is a type name, such as `Ordering` or `m.Ordering`";
 
   if !failures > 0 then exit 1 else print_endline "lexer tests passed"

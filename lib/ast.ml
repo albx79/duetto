@@ -84,6 +84,15 @@ module Make (W : WRAP) = struct
     | Row_var of string        (* ..?R, the first occurrence of R *)
     | Row_ref of string        (* ..R, a later occurrence *)
 
+  (* A spec's title: free text and the interface names it marks in
+     backticks, which make it a law spec (spec, sections 3.6 and 10.9). *)
+  and spec_title = title_segment list
+  and title_segment = title_segment_node wrapped
+  and title_segment_node =
+    | Title_text of string
+    (* `m.Ordering`: the value path, then the type name. *)
+    | Title_mark of string list * string
+
   and comparison =
     | Less            (* < *)
     | Less_or_equal   (* <= *)
@@ -103,7 +112,7 @@ module Make (W : WRAP) = struct
     | Do of expr
     (* A spec entry: its title and its body's entries, which are locals and
        ensures only (spec, section 7). *)
-    | Spec of string * struct_entry list
+    | Spec of spec_title * struct_entry list
 
   (* A branch of a case (spec, sections 6.3 and 9). *)
   and case_branch = {
@@ -151,6 +160,8 @@ module Make (W : WRAP) = struct
     | Call of expr * expr list
     | Lambda of string list * expr
     | Some_val of type_expr
+    (* every(T): the subject of a law spec (spec, section 10.9). *)
+    | Every of type_expr
     (* A brace group without a result: its fields are its value. *)
     | Record of struct_entry list
     (* A brace group ending with <<e: its value is e (spec, section 3.3). *)

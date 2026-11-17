@@ -39,6 +39,13 @@ type error =
   | Missing_spec_title of {
       position: position;
     }
+  | Unclosed_title_mark of {
+      position: position;
+    }
+  | Invalid_title_mark of {
+      text: string;
+      position: position;
+    }
   | Nested_spec of {
       title: string;
       position: position;
@@ -105,6 +112,15 @@ let string_of_error = function
   | Invalid_spec_title_character { character; position } ->
       Printf.sprintf "A spec title cannot contain '%s', at %s"
         character (string_of_position position)
+
+  | Unclosed_title_mark { position } ->
+      Printf.sprintf "The '`' at %s in a spec title is not closed"
+        (string_of_position position)
+
+  | Invalid_title_mark { text; position } ->
+      Printf.sprintf
+        "The mark `%s` at %s is not an interface name: a mark is a type name, such as `Ordering` or `m.Ordering`"
+        text (string_of_position position)
 
   | Nested_spec { title; position } ->
       Printf.sprintf

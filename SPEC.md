@@ -188,9 +188,10 @@ f_res is used before it is initialized:
 
 A spec entry is `spec`, a title, and a struct. The title is part of the grammar, not a string literal, so it is never an expression: no `++`, no constants. It is free text up to the opening `{`, under these rules (decided):
 
-- It may contain any character except `{`, `}` and `` ` ``. A `}` in a title is an error, which also catches a title whose `{` is missing. Backticks are reserved for marking the interfaces of law specs (section 10.9).
+- It may contain any character except `{` and `}`. A `}` in a title is an error, which also catches a title whose `{` is missing. Backticks mark the interfaces of a law spec (section 10.9): a **mark** is a type name, optionally after a value path, as in `` `Ordering` `` or `` `m.Ordering` ``, and anything else between backticks, or a backtick that is not closed, is an error.
 - `#` in a title is text, not the start of a comment.
-- Brackets need not balance, so a title can describe a half-open range such as `[0, 1)`. Tools should treat the whole title as one text token, as they treat strings and comments.
+- Brackets need not balance, so a title can describe a half-open range such as `[0, 1)`. Tools should treat a title's text as text, as they treat strings and comments, and its marks as names.
+- Titles are shown as written, marks in backticks, in reports and errors.
 - Like everything else, it is not sensitive to newlines: every run of whitespace, newlines included, counts as one space, and leading and trailing whitespace is removed.
 - It must not be empty.
 

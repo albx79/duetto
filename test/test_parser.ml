@@ -90,7 +90,7 @@ let () =
       Type_field ("T", [], Type_ref ([], "Num"));
       Type_local ("U", [], Type_ref ([], "Num"));
       Ensure (Eq (Ident "b", Num "2"));
-      Spec ("s", [Ensure (Eq (Ident "a", Num "1"))]);
+      Spec ([Title_text "s"], [Ensure (Eq (Ident "a", Num "1"))]);
       Field ("c", Ident "c");
     ]);
   check_file_error "result at file level" "x = 1,\n<<x"
@@ -99,7 +99,7 @@ let () =
     "The 'do' at :2:3 is at file level: a file is a static struct and performs no actions";
   check_file "private types in a spec" "spec orderings { NumOrd = Ordering(Num), natural = some(NumOrd), ensure natural.compare(1, 1) == 'eq }"
     (Record [
-      Spec ("orderings", [
+      Spec ([Title_text "orderings"], [
         Type_local ("NumOrd", [], Type_apply ([], "Ordering", [Type_ref ([], "Num")]));
         Local ("natural", Some_val (Type_ref ([], "NumOrd")));
         Ensure (Eq (Call (Proj (Ident "natural", "compare"), [Num "1"; Num "1"]), Label "eq"));
@@ -219,8 +219,22 @@ let () =
     ]));
   check "parenthesised comparison compared" "(ord ? a < b) == 'true"
     (Eq (Compare (Ident "ord", Less, Ident "a", Ident "b"), Label "true"));
+  check_file "law spec" "spec `Ordering` agrees with `std.Eq` { ord = every(Ordering(?A)), eq = every(std.Eq(A)), x = some(A), ensure 1 == 1 }"
+    (Record [Spec (
+      [Title_mark ([], "Ordering"); Title_text " agrees with "; Title_mark (["std"], "Eq")],
+      [
+        Local ("ord", Every (Type_apply ([], "Ordering", [Type_var "A"])));
+        Local ("eq", Every (Type_apply (["std"], "Eq", [Type_ref ([], "A")])));
+        Local ("x", Some_val (Type_ref ([], "A")));
+        Ensure (Eq (Num "1", Num "1"));
+      ])]);
+  check "every" "every(Ordering(?A))" (Every (Type_apply ([], "Ordering", [Type_var "A"])));
+  check_error "every is not a pattern" "case x { every(Num) -> 1 }";
+  check_error "every needs a type" "every(x)";
+  check_file_error "law spec in a nested struct" "m: { spec `Ordering` is total {} }"
+    "The spec '`Ordering` is total' at :1:6 is inside a nested struct; specs are allowed only at file level";
   check_file "comparison in a spec" "spec strings { ensure lexicographic ? \"bar\" < \"foo\" }"
-    (Record [Spec ("strings", [
+    (Record [Spec ([Title_text "strings"], [
       Ensure (Compare (Ident "lexicographic", Less, String "bar", String "foo"));
     ])]);
   check_file_error "comparison needs an ordering" "x: a < b"
@@ -281,25 +295,25 @@ let () =
   check_error "branches need commas" "case x { 'a -> 1 'b -> 2 }";
 
   check_file "spec" "spec it works { ensure f(1) == 2 }"
-    (Record [Spec ("it works", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "2"))])]);
+    (Record [Spec ([Title_text "it works"], [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "2"))])]);
   check_file "spec with locals" "spec adds { x = f(1), y = x + 1, ensure y == 3, }"
     (Record [
-      Spec ("adds", [
+      Spec ([Title_text "adds"], [
         Local ("x", Call (Ident "f", [Num "1"]));
         Local ("y", Add (Ident "x", Num "1"));
         Ensure (Eq (Ident "y", Num "3"));
       ]);
     ]);
-  check_file "empty spec" "spec nothing yet {}" (Record [Spec ("nothing yet", [])]);
+  check_file "empty spec" "spec nothing yet {}" (Record [Spec ([Title_text "nothing yet"], [])]);
   check_file "specs among fields" "f: x -> x,\nspec identity { ensure f(1) == 1 },\ng: 2,"
     (Record [
       Field ("f", Lambda (["x"], Ident "x"));
-      Spec ("identity", [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "1"))]);
+      Spec ([Title_text "identity"], [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "1"))]);
       Field ("g", Num "2");
     ]);
   check_file "spec with nested struct" "spec s { r = { a: 1 }, ensure r.a == 1 }"
     (Record [
-      Spec ("s", [
+      Spec ([Title_text "s"], [
         Local ("r", Record [Field ("a", Num "1")]);
         Ensure (Eq (Proj (Ident "r", "a"), Num "1"));
       ]);
