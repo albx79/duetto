@@ -13,5 +13,5 @@ repository = "https://github.com/albx79/duetto"
 # to a local commit.
 [grammars.duetto]
 repository = "https://github.com/albx79/duetto"
-rev = "REPLACE_WITH_COMMIT"
+rev = "61295e9af1932a23c81bce1841ac5aeb63eb9788"
 path = "tree-sitter-duetto"
