@@ -1,0 +1,71 @@
+============================================================
+Double
+============================================================
+
+spec reads { fs = double { read_text("a.cfg") << "content" } },
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_text))
+    (spec_body
+      (local
+        (identifier)
+        (double
+          (stub
+            (identifier)
+            (string
+              (string_content))
+            (string
+              (string_content))))))))
+
+============================================================
+Response chains and patterns
+============================================================
+
+x: double {
+  fetch("a") << 'timeout << 'timeout << { ok: "data" },
+  fetch(some(String)) << 'unreachable,
+  read(path, ^cfg, { id: 1, .. }) << path,
+  now() << 1,
+},
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (double
+      (stub
+        (identifier)
+        (string
+          (string_content))
+        (label)
+        (label)
+        (struct
+          (field
+            (identifier)
+            (string
+              (string_content)))))
+      (stub
+        (identifier)
+        (some_pattern
+          (type_path
+            (type_identifier)))
+        (label))
+      (stub
+        (identifier)
+        (identifier)
+        (pinned
+          (identifier))
+        (record_pattern
+          (field_pattern
+            (identifier)
+            (number))
+          (rest))
+        (identifier))
+      (stub
+        (identifier)
+        (number)))))

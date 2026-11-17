@@ -1,0 +1,14 @@
+{
+  "name": "tree-sitter-duetto",
+  "version": "0.1.0",
+  "description": "Duetto grammar for tree-sitter",
+  "private": true,
+  "repository": "https://github.com/albx79/duetto",
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "0.25.10"
+  }
+}

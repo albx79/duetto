@@ -1,0 +1,160 @@
+============================================================
+Spec
+============================================================
+
+spec the answer is 42 { ensure x == 42 },
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_text))
+    (spec_body
+      (ensure
+        (binary_expression
+          (identifier)
+          (number))))))
+
+============================================================
+Spec title with symbols
+============================================================
+
+spec [0, 1) is half-open # not a comment {},
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_text))
+    (spec_body)))
+
+============================================================
+Spec title spanning lines
+============================================================
+
+spec a
+  longer title {
+  x = 1,
+  ensure f(x) == 2,
+},
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_text))
+    (spec_body
+      (local
+        (identifier)
+        (number))
+      (ensure
+        (binary_expression
+          (call
+            (identifier)
+            (arguments
+              (identifier)))
+          (number))))))
+
+============================================================
+Spec title with keywords
+============================================================
+
+spec ensure works and case does too {},
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_text))
+    (spec_body)))
+
+============================================================
+Law spec
+============================================================
+
+spec `Ordering` is symmetric {
+  ord = every(Ordering(?A)),
+  x = some(A),
+  ensure ord.compare(x, x) == 'eq,
+},
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_mark
+        (type_identifier))
+      (title_text))
+    (spec_body
+      (local
+        (identifier)
+        (every
+          (type_application
+            (type_path
+              (type_identifier))
+            (type_variable))))
+      (local
+        (identifier)
+        (some
+          (type_path
+            (type_identifier))))
+      (ensure
+        (binary_expression
+          (call
+            (projection
+              (identifier)
+              (identifier))
+            (arguments
+              (identifier)
+              (identifier)))
+          (label))))))
+
+============================================================
+Law spec with two marks
+============================================================
+
+spec `Ordering` agrees with `std.Eq` {},
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_mark
+        (type_identifier))
+      (title_text)
+      (title_mark
+        (identifier)
+        (type_identifier)))
+    (spec_body)))
+
+============================================================
+Private type in a spec
+============================================================
+
+spec orderings { NumOrd = Ordering(Num), natural = some(NumOrd) },
+
+---
+
+(source_file
+  (spec
+    (spec_title
+      (title_text))
+    (spec_body
+      (type_local
+        (type_identifier)
+        (type_application
+          (type_path
+            (type_identifier))
+          (type_path
+            (type_identifier))))
+      (local
+        (identifier)
+        (some
+          (type_path
+            (type_identifier)))))))

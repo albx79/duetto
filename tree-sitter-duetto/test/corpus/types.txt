@@ -1,0 +1,210 @@
+============================================================
+Simple types
+============================================================
+
+a: some(Num),
+b: some(m.Bool),
+c: some('a),
+d: some([?A]),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (some
+      (type_path
+        (type_identifier))))
+  (field
+    (identifier)
+    (some
+      (type_path
+        (identifier)
+        (type_identifier))))
+  (field
+    (identifier)
+    (some
+      (label)))
+  (field
+    (identifier)
+    (some
+      (list_type
+        (type_variable)))))
+
+============================================================
+Type application
+============================================================
+
+a: some(Result(?A, String)),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (some
+      (type_application
+        (type_path
+          (type_identifier))
+        (type_variable)
+        (type_path
+          (type_identifier))))))
+
+============================================================
+Record types and rows
+============================================================
+
+a: some({ name: String }),
+b: some({ name: String, .. }),
+c: some({ name: String, ..?R }),
+d: some({ ..R }),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (some
+      (record_type
+        (field_type
+          (identifier)
+          (type_path
+            (type_identifier))))))
+  (field
+    (identifier)
+    (some
+      (record_type
+        (field_type
+          (identifier)
+          (type_path
+            (type_identifier)))
+        (row))))
+  (field
+    (identifier)
+    (some
+      (record_type
+        (field_type
+          (identifier)
+          (type_path
+            (type_identifier)))
+        (row
+          (type_variable)))))
+  (field
+    (identifier)
+    (some
+      (record_type
+        (row
+          (type_identifier))))))
+
+============================================================
+Function types
+============================================================
+
+a: some((Num) -> String),
+b: some(() -> Num),
+c: some((A, A) -> A),
+d: some((A) -> (B) -> C),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (some
+      (function_type
+        (type_parameters_list
+          (type_path
+            (type_identifier)))
+        (type_path
+          (type_identifier)))))
+  (field
+    (identifier)
+    (some
+      (function_type
+        (type_parameters_list)
+        (type_path
+          (type_identifier)))))
+  (field
+    (identifier)
+    (some
+      (function_type
+        (type_parameters_list
+          (type_path
+            (type_identifier))
+          (type_path
+            (type_identifier)))
+        (type_path
+          (type_identifier)))))
+  (field
+    (identifier)
+    (some
+      (function_type
+        (type_parameters_list
+          (type_path
+            (type_identifier)))
+        (function_type
+          (type_parameters_list
+            (type_path
+              (type_identifier)))
+          (type_path
+            (type_identifier)))))))
+
+============================================================
+Unions
+============================================================
+
+a: some('lt | 'eq | 'gt),
+b: some((String) -> { ok: Num } | { err: String }),
+c: some(((A) -> B) | 'none),
+d: some('a | ('b | 'c)),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (some
+      (union_type
+        (union_type
+          (label)
+          (label))
+        (label))))
+  (field
+    (identifier)
+    (some
+      (function_type
+        (type_parameters_list
+          (type_path
+            (type_identifier)))
+        (union_type
+          (record_type
+            (field_type
+              (identifier)
+              (type_path
+                (type_identifier))))
+          (record_type
+            (field_type
+              (identifier)
+              (type_path
+                (type_identifier))))))))
+  (field
+    (identifier)
+    (some
+      (union_type
+        (parenthesized_type
+          (function_type
+            (type_parameters_list
+              (type_path
+                (type_identifier)))
+            (type_path
+              (type_identifier))))
+        (label))))
+  (field
+    (identifier)
+    (some
+      (union_type
+        (label)
+        (parenthesized_type
+          (union_type
+            (label)
+            (label)))))))

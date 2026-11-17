@@ -1,0 +1,271 @@
+============================================================
+Literals
+============================================================
+
+a: 42,
+b: 3.14,
+c: 15e-3,
+d: "esc\n\"q\"",
+e: 'lt,
+f: [1, 2,],
+g: {},
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (number))
+  (field
+    (identifier)
+    (string
+      (string_content)
+      (escape_sequence)
+      (escape_sequence)
+      (string_content)
+      (escape_sequence)))
+  (field
+    (identifier)
+    (label))
+  (field
+    (identifier)
+    (list
+      (number)
+      (number)))
+  (field
+    (identifier)
+    (struct)))
+
+============================================================
+Lambdas
+============================================================
+
+a: x -> x,
+b: (x) -> x,
+c: (x, y,) -> x,
+d: () -> 1,
+e: x -> y -> x,
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (lambda
+      (identifier)
+      (identifier)))
+  (field
+    (identifier)
+    (lambda
+      (parameters
+        (identifier))
+      (identifier)))
+  (field
+    (identifier)
+    (lambda
+      (parameters
+        (identifier)
+        (identifier))
+      (identifier)))
+  (field
+    (identifier)
+    (lambda
+      (parameters)
+      (number)))
+  (field
+    (identifier)
+    (lambda
+      (identifier)
+      (lambda
+        (identifier)
+        (identifier)))))
+
+============================================================
+Parenthesised expression
+============================================================
+
+a: (x),
+b: (x + 1) * 2,
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (parenthesized_expression
+      (identifier)))
+  (field
+    (identifier)
+    (binary_expression
+      (parenthesized_expression
+        (binary_expression
+          (identifier)
+          (number)))
+      (number))))
+
+============================================================
+Operators
+============================================================
+
+a: x + y * z,
+b: a ++ b + c,
+c: x % 2 == 0,
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (binary_expression
+      (identifier)
+      (binary_expression
+        (identifier)
+        (identifier))))
+  (field
+    (identifier)
+    (binary_expression
+      (binary_expression
+        (identifier)
+        (identifier))
+      (identifier)))
+  (field
+    (identifier)
+    (binary_expression
+      (binary_expression
+        (identifier)
+        (number))
+      (number))))
+
+============================================================
+Calls and projections
+============================================================
+
+a: f(x).name,
+b: (x -> x)(1),
+c: f(x)(y),
+d: m.f(),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (projection
+      (call
+        (identifier)
+        (arguments
+          (identifier)))
+      (identifier)))
+  (field
+    (identifier)
+    (call
+      (parenthesized_expression
+        (lambda
+          (identifier)
+          (identifier)))
+      (arguments
+        (number))))
+  (field
+    (identifier)
+    (call
+      (call
+        (identifier)
+        (arguments
+          (identifier)))
+      (arguments
+        (identifier))))
+  (field
+    (identifier)
+    (call
+      (projection
+        (identifier)
+        (identifier))
+      (arguments))))
+
+============================================================
+Comparisons under an ordering
+============================================================
+
+a: ord ? a < b,
+b: people.by_name ? a <= b,
+c: by(key) ? a > b,
+d: ord ? x + 1 >= y,
+e: ord ? a ~~ b,
+f: a + ord ? x < y,
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (comparison
+      (identifier)
+      (identifier)
+      (identifier)))
+  (field
+    (identifier)
+    (comparison
+      (projection
+        (identifier)
+        (identifier))
+      (identifier)
+      (identifier)))
+  (field
+    (identifier)
+    (comparison
+      (call
+        (identifier)
+        (arguments
+          (identifier)))
+      (identifier)
+      (identifier)))
+  (field
+    (identifier)
+    (comparison
+      (identifier)
+      (binary_expression
+        (identifier)
+        (number))
+      (identifier)))
+  (field
+    (identifier)
+    (comparison
+      (identifier)
+      (identifier)
+      (identifier)))
+  (field
+    (identifier)
+    (binary_expression
+      (identifier)
+      (comparison
+        (identifier)
+        (identifier)
+        (identifier)))))
+
+============================================================
+Some and every
+============================================================
+
+a: some(?A),
+b: every(Ordering(?A)),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (some
+      (type_variable)))
+  (field
+    (identifier)
+    (every
+      (type_application
+        (type_path
+          (type_identifier))
+        (type_variable)))))

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "duetto",
+      "camelcase": "Duetto",
+      "title": "Duetto",
+      "scope": "source.duetto",
+      "path": ".",
+      "file-types": ["duetto"],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "description": "Duetto grammar for tree-sitter",
+    "authors": [{ "name": "albx79" }],
+    "links": { "repository": "https://github.com/albx79/duetto" }
+  },
+  "bindings": {
+    "c": false,
+    "go": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false
+  }
+}

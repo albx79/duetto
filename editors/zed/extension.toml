@@ -1,0 +1,17 @@
+id = "duetto"
+name = "Duetto"
+version = "0.1.0"
+schema_version = 1
+authors = ["albx79"]
+description = "Syntax highlighting for Duetto"
+repository = "https://github.com/albx79/duetto"
+
+# Zed fetches the grammar from this repository, at this commit, and builds
+# it from the tree-sitter-duetto directory. Set rev to a commit that contains
+# the grammar. To try local changes before pushing them, point repository at
+# your checkout instead, as in "file:///home/albx/src/duetto", with rev set
+# to a local commit.
+[grammars.duetto]
+repository = "https://github.com/albx79/duetto"
+rev = "REPLACE_WITH_COMMIT"
+path = "tree-sitter-duetto"

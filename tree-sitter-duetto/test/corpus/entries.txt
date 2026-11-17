@@ -1,0 +1,131 @@
+============================================================
+Fields, locals and types
+============================================================
+
+a: 1,
+b = 2,
+T(A): { x: A },
+U = 'a | 'b,
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (number))
+  (local
+    (identifier)
+    (number))
+  (type_field
+    (type_identifier)
+    (type_parameters
+      (type_identifier))
+    (record_type
+      (field_type
+        (identifier)
+        (type_path
+          (type_identifier)))))
+  (type_local
+    (type_identifier)
+    (union_type
+      (label)
+      (label))))
+
+============================================================
+Punned fields and types
+============================================================
+
+x,
+p.name,
+Bool,
+m.Bool,
+
+---
+
+(source_file
+  (punned_field
+    (value_path
+      (identifier)))
+  (punned_field
+    (value_path
+      (identifier)
+      (identifier)))
+  (punned_type
+    (type_path
+      (type_identifier)))
+  (punned_type
+    (type_path
+      (identifier)
+      (type_identifier))))
+
+============================================================
+Ensure and do
+============================================================
+
+ensure a == b,
+x: { do f(), <<1 },
+
+---
+
+(source_file
+  (ensure
+    (binary_expression
+      (identifier)
+      (identifier)))
+  (field
+    (identifier)
+    (struct
+      (do
+        (call
+          (identifier)
+          (arguments)))
+      (result
+        (number)))))
+
+============================================================
+Block result
+============================================================
+
+x: { y = f(1), <<y },
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (struct
+      (local
+        (identifier)
+        (call
+          (identifier)
+          (arguments
+            (number))))
+      (result
+        (identifier)))))
+
+============================================================
+Comments
+============================================================
+
+# a comment
+x: 1, # trailing
+
+
+---
+
+(source_file
+  (comment)
+  (field
+    (identifier)
+    (number))
+  (comment))
+
+============================================================
+Empty file
+============================================================
+
+
+
+---
+
+(source_file)

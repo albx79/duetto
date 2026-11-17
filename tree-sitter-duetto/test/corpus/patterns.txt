@@ -1,0 +1,96 @@
+============================================================
+Case on labels
+============================================================
+
+a: case r { 'lt -> "less", 'eq -> "equal", 'gt -> "greater" },
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (case
+      (identifier)
+      (case_branch
+        (label)
+        (string
+          (string_content)))
+      (case_branch
+        (label)
+        (string
+          (string_content)))
+      (case_branch
+        (label)
+        (string
+          (string_content))))))
+
+============================================================
+Case on records
+============================================================
+
+a: case e { { num } -> num, { add: { l, r } } -> 0, { ok, .. } -> 1, {} -> 2 },
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (case
+      (identifier)
+      (case_branch
+        (record_pattern
+          (field_pattern
+            (identifier)))
+        (identifier))
+      (case_branch
+        (record_pattern
+          (field_pattern
+            (identifier)
+            (record_pattern
+              (field_pattern
+                (identifier))
+              (field_pattern
+                (identifier)))))
+        (number))
+      (case_branch
+        (record_pattern
+          (field_pattern
+            (identifier))
+          (rest))
+        (number))
+      (case_branch
+        (record_pattern)
+        (number)))))
+
+============================================================
+Literal, pinned, typed and binder patterns
+============================================================
+
+a: case x { 0 -> 1, "s" -> 2, ^expected -> 3, some(Num) -> 4, other -> 5 },
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (case
+      (identifier)
+      (case_branch
+        (number)
+        (number))
+      (case_branch
+        (string
+          (string_content))
+        (number))
+      (case_branch
+        (pinned
+          (identifier))
+        (number))
+      (case_branch
+        (some_pattern
+          (type_path
+            (type_identifier)))
+        (number))
+      (case_branch
+        (identifier)
+        (number)))))
