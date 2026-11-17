@@ -11,6 +11,7 @@
 %token <string> SPEC     (* spec keyword with its free-text title *)
 %token CASE SOME ENSURE DO DOUBLE
 %token ARROW EQEQ RESULT DOTDOT CONCAT
+%token LT LE GT GE EQUIV  (* < <= > >= ~~, only after ord ? *)
 %token PLUS
 %token MINUS
 %token TIMES

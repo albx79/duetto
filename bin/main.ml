@@ -64,6 +64,7 @@ let rec eval (expr : A.expr) =
   | A.Eq (lhs, rhs) -> Label (if atom_eq (eval lhs) (eval rhs) then "true" else "false")
   | A.Label l -> Label l
   | A.Double _ -> failwith "Doubles are not supported yet"
+  | A.Compare _ -> failwith "Comparisons under an ordering are not supported yet"
   | A.Case (scrutinee, branches) ->
       let value = eval scrutinee in
       (* Binders match but bind nothing, since this evaluator has no

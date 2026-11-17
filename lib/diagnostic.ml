@@ -24,6 +24,10 @@ type error =
   | Unexpected_end_of_input of {
       position: position;
     }
+  | Misplaced_comparison of {
+      operator: string;
+      position: position;
+    }
   | Reserved_token of {
       token: string;
       position: position;
@@ -79,6 +83,11 @@ let string_of_error = function
   | Unexpected_token { token; position } ->
       Printf.sprintf "Unexpected token '%s' at %s"
         token (string_of_position position)
+
+  | Misplaced_comparison { operator; position } ->
+      Printf.sprintf
+        "Unexpected '%s' at %s: a comparison names its ordering, as in 'ord ? a %s b', and comparisons cannot be chained"
+        operator (string_of_position position) operator
 
   | Unexpected_end_of_input { position } ->
       Printf.sprintf "Unexpected end of input at %s"

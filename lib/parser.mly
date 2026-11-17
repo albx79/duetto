@@ -72,9 +72,15 @@ let expr_of_path start_pos end_pos path =
 %right ARROW
 (* Above ARROW: in a type, (A) -> B | C is (A) -> (B | C). *)
 %left BAR
+(* A comparison, ord ? a < b, is non-associative at the level of ==; its
+   operands bind as arithmetic does, and its ordering, before ?, binds
+   tighter still, so ord ? x + 1 < y compares x + 1 with y (spec, section
+   6.2). The operators after ? need no precedence: they cannot follow an
+   operand anywhere else. *)
 %nonassoc EQEQ
 %left PLUS MINUS CONCAT
 %left TIMES DIV MOD
+%nonassoc QUESTION
 %left DOT LPAREN
 
 %start <A.expr> main
@@ -116,6 +122,8 @@ expr:
     | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
     | expr LPAREN expr_items RPAREN { mk (Call ($1, $3)) $startpos $endpos }
     | expr EQEQ expr       { mk (Eq ($1, $3)) $startpos $endpos }
+    | expr QUESTION expr comparison expr %prec EQEQ
+        { mk (Compare ($1, $4, $3, $5)) $startpos $endpos }
     | expr CONCAT expr     { mk (Concat ($1, $3)) $startpos $endpos }
     | expr PLUS expr       { mk (Add ($1, $3)) $startpos $endpos }
     | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }
@@ -123,6 +131,13 @@ expr:
     | expr DIV expr        { mk (Div ($1, $3)) $startpos $endpos }
     | expr MOD expr        { mk (Mod ($1, $3)) $startpos $endpos }
     | LPAREN expr RPAREN   { $2 }
+
+%inline comparison:
+    | LT { Less }
+    | LE { Less_or_equal }
+    | GT { Greater }
+    | GE { Greater_or_equal }
+    | EQUIV { Equivalent }
 
 (* At least one branch, comma-separated, with an optional trailing comma. *)
 case_branches:

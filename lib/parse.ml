@@ -19,6 +19,7 @@ module Make_parse
   (L : sig
     val token : Lexing.lexbuf -> P.token
     val describe : P.token -> string option
+    val is_comparison : P.token -> bool
   end) =
 struct
   let parse_with checkpoint lexbuf =
@@ -45,10 +46,11 @@ struct
           loop last (I.resume checkpoint)
 
       | I.HandlingError _ ->
-          let (description, pos) =
+          let (description, comparison, pos) =
             match last with
-            | Some (token, startp) -> (L.describe token, startp)
-            | None -> (None, lexbuf.Lexing.lex_curr_p)
+            | Some (token, startp) ->
+                (L.describe token, L.is_comparison token, startp)
+            | None -> (None, false, lexbuf.Lexing.lex_curr_p)
           in
           let position = {
             Diagnostic.filename = pos.pos_fname;
@@ -57,6 +59,10 @@ struct
           } in
 
           (match description with
+          | Some operator when comparison ->
+              raise (Diagnostic.Error (
+                Diagnostic.Misplaced_comparison { operator; position }
+              ))
           | None ->
               raise (Diagnostic.Error (
                 Diagnostic.Unexpected_end_of_input { position }

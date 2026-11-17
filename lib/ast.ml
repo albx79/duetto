@@ -84,6 +84,13 @@ module Make (W : WRAP) = struct
     | Row_var of string        (* ..?R, the first occurrence of R *)
     | Row_ref of string        (* ..R, a later occurrence *)
 
+  and comparison =
+    | Less            (* < *)
+    | Less_or_equal   (* <= *)
+    | Greater         (* > *)
+    | Greater_or_equal (* >= *)
+    | Equivalent      (* ~~ *)
+
   and struct_entry = struct_entry_node wrapped
   and struct_entry_node =
     | Field of string * expr
@@ -151,6 +158,8 @@ module Make (W : WRAP) = struct
     | List of expr list
     | Concat of expr * expr
     | Eq of expr * expr
+    (* ord ? a < b (spec, section 6.2): ordering, operator, operands. *)
+    | Compare of expr * comparison * expr * expr
     | Add of expr * expr
     | Sub of expr * expr
     | Mul of expr * expr

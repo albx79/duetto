@@ -193,6 +193,44 @@ let () =
   check_error "pin is not an expression" "^x";
   check_error "no expressions in patterns" "case x { a + 1 -> 1 }";
 
+  (* Comparisons under an ordering (spec, section 6.2). *)
+  check "comparison" "ord ? a < b" (Compare (Ident "ord", Less, Ident "a", Ident "b"));
+  check "comparison operators" "[o ? a <= b, o ? a > b, o ? a >= b, o ? a ~~ b]"
+    (List [
+      Compare (Ident "o", Less_or_equal, Ident "a", Ident "b");
+      Compare (Ident "o", Greater, Ident "a", Ident "b");
+      Compare (Ident "o", Greater_or_equal, Ident "a", Ident "b");
+      Compare (Ident "o", Equivalent, Ident "a", Ident "b");
+    ]);
+  check "ordering is a projection" "people.by_name ? a < b"
+    (Compare (Proj (Ident "people", "by_name"), Less, Ident "a", Ident "b"));
+  check "ordering is a call" "by(key) ? a < b"
+    (Compare (Call (Ident "by", [Ident "key"]), Less, Ident "a", Ident "b"));
+  check "operands bind as arithmetic" "ord ? x + 1 < y * 2"
+    (Compare (Ident "ord", Less, Add (Ident "x", Num "1"), Mul (Ident "y", Num "2")));
+  check "ordering binds tighter than arithmetic" "a + ord ? x < y"
+    (Add (Ident "a", Compare (Ident "ord", Less, Ident "x", Ident "y")));
+  check "comparison as a lambda body" "x -> ord ? x < 1"
+    (Lambda (["x"], Compare (Ident "ord", Less, Ident "x", Num "1")));
+  check "comparison as a case scrutinee" "case ord ? a < b { 'true -> 1, 'false -> 0 }"
+    (Case (Compare (Ident "ord", Less, Ident "a", Ident "b"), [
+      { pattern = Label_pattern "true"; body = Num "1" };
+      { pattern = Label_pattern "false"; body = Num "0" };
+    ]));
+  check "parenthesised comparison compared" "(ord ? a < b) == 'true"
+    (Eq (Compare (Ident "ord", Less, Ident "a", Ident "b"), Label "true"));
+  check_file "comparison in a spec" "spec strings { ensure lexicographic ? \"bar\" < \"foo\" }"
+    (Record [Spec ("strings", [
+      Ensure (Compare (Ident "lexicographic", Less, String "bar", String "foo"));
+    ])]);
+  check_file_error "comparison needs an ordering" "x: a < b"
+    "Unexpected '<' at :1:6: a comparison names its ordering, as in 'ord ? a < b', and comparisons cannot be chained";
+  check_file_error "comparisons do not chain" "x: ord ? a < b <= c"
+    "Unexpected '<=' at :1:16: a comparison names its ordering, as in 'ord ? a <= b', and comparisons cannot be chained";
+  check_error "comparison is non-associative with ==" "ord ? a < b == 'true";
+  check_error "ordering needs a comparison" "ord ? a";
+  check_error "== is not a comparison under an ordering" "ord ? a == b";
+
   (* Doubles (spec, section 11). *)
   check "double" "double { read_text(\"a.cfg\") << \"content\" }"
     (Double [{ stub_name = "read_text"; arguments = [String_pattern "a.cfg"];

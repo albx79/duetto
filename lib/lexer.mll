@@ -21,6 +21,8 @@ let describe = function
   | CASE -> Some "case" | SOME -> Some "some" | DOUBLE -> Some "double"
   | ENSURE -> Some "ensure" | DO -> Some "do"
   | ARROW -> Some "->" | EQEQ -> Some "==" | RESULT -> Some "<<"
+  | LT -> Some "<" | LE -> Some "<=" | GT -> Some ">" | GE -> Some ">="
+  | EQUIV -> Some "~~"
   | DOTDOT -> Some ".." | CONCAT -> Some "++"
   | PLUS -> Some "+" | MINUS -> Some "-" | TIMES -> Some "*"
   | DIV -> Some "/" | MOD -> Some "%"
@@ -30,6 +32,11 @@ let describe = function
   | LBRACE -> Some "{" | RBRACE -> Some "}"
   | LBRACKET -> Some "[" | RBRACKET -> Some "]"
   | EOF -> None
+
+(* The comparison operators, which are valid only in ord ? a < b. *)
+let is_comparison = function
+  | LT | LE | GT | GE | EQUIV -> true
+  | _ -> false
 
 let keyword_or_ident = function
   | "do" -> DO
@@ -156,6 +163,12 @@ rule token = parse
 
   | "->" { ARROW }
   | "==" { EQEQ }
+  (* Comparisons under an ordering (spec, section 6.2). *)
+  | "<=" { LE }
+  | ">=" { GE }
+  | "~~" { EQUIV }
+  | '<' { LT }
+  | '>' { GT }
   | "<<" { RESULT }
   | ".." { DOTDOT }
   | "++" { CONCAT }

@@ -21,6 +21,7 @@ let show = function
   | LBRACE -> "LBRACE" | RBRACE -> "RBRACE"
   | LBRACKET -> "LBRACKET" | RBRACKET -> "RBRACKET"
   | DOUBLE -> "DOUBLE" | CARET -> "CARET"
+  | LT -> "LT" | LE -> "LE" | GT -> "GT" | GE -> "GE" | EQUIV -> "EQUIV"
   | EOF -> "EOF"
 
 let tokens src =
@@ -65,6 +66,10 @@ let () =
       UIDENT "Int"; UIDENT "Ordering" ];
   check "identifier character classes" "fooBar 'foo_bar"
     [ LIDENT "foo"; UIDENT "Bar"; LABEL "foo_bar" ];
+  check "comparison operators" "< <= > >= ~~ << -> == ?"
+    [ LT; LE; GT; GE; EQUIV; RESULT; ARROW; EQEQ; QUESTION ];
+  check "comparison operators without spaces" "o?a<=b"
+    [ LIDENT "o"; QUESTION; LIDENT "a"; LE; LIDENT "b" ];
   check "double and pins" "double ^x doubled"
     [ DOUBLE; CARET; LIDENT "x"; LIDENT "doubled" ];
   check "type variables" "?A ?Key"
