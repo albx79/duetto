@@ -411,8 +411,8 @@ main: caps -> run_server(caps.net, caps.log),
 
 ```duetto
 spec main serves on the network and logs {
-  net = double { listen(8080) returns ... },
-  log = double { write("started") returns {} },
+  net = double { listen(8080) << ... },
+  log = double { write("started") << {} },
   ensure main({ net, log }) == ...,
 },
 ```
@@ -560,11 +560,23 @@ eval = e -> case e {
 - **A record is included in every union that contains its shape**, as a label is included in every label set that contains it. So `{ ok: 1 }` can be returned where `{ ok: Num } | { err: String }` is expected, and the branches of a `case` may produce different members of one union.
 - **Dispatch on shape is not type-directed dispatch.** A `case` inspects which known shape a value has, as a label `case` inspects which label it is (section 6.2). The kind of `case` is determined by its branch patterns, never by the scrutinee's type.
 
-**Patterns.** A record pattern may be exact or open:
+**Patterns (decided).** `case` branches and the stubs of a double (section 11) use **one pattern language**. A stub is a `case` branch over a function's argument list. The forms are:
 
-- An exact pattern such as `{ a }` matches only the member whose field set is exactly `{ a }`.
-- An open pattern such as `{ a, .. }` matches every member that has the field `a`. The field must have the same type in all the members it matches.
-- Branches are checked in order. A branch that is fully covered by earlier branches is an error, as with wildcard patterns elsewhere: `{ a, b }` may not follow `{ a, .. }`. The branches together must cover every member.
+- **Literals**: labels, numbers and strings, matched with `==`, as in `'lt` or `"settings.json"`.
+- **Binders**: a bare name, such as `path` or `other`, matches any value and binds it in the branch's body or the stub's responses.
+- **Pinned values**: `^name` matches the value of a name already in scope, compared with `==`, as in `read_text(^config_path)`. Without the `^`, the name would be a new binder that shadows the local. The sigil `^` is provisional.
+- **Typed wildcards**: `some(T)` matches every value of `T` and binds nothing. It is how a pattern states a type, which matters for doubles (section 11).
+- **Record patterns**: `{ f1: P1, ..., fn: Pn }` matches a record with exactly these fields whose values match the sub-patterns; `{ f1: P1, ..., .. }` is the open form, matching every record that has these fields. A field written alone is punning, as in record literals: `{ num }` means `{ num: num }`, binding the field's value.
+- **List patterns** come with list deconstruction (section 13.2).
+
+The rules for branches:
+
+- An exact pattern such as `{ a }` matches only a member whose field set is exactly `{ a }`. An open pattern such as `{ a, .. }` matches every member that has the field `a`; the field must have the same type in all the members it matches.
+- Branches are tried in order, and a branch that is fully covered by earlier branches is an error: `{ a, b }` may not follow `{ a, .. }`, and nothing may follow a binder.
+- **A `case` must be exhaustive**: its branches together cover every member, which a final binder always does. **A double need not be**: a call that no stub matches fails the spec (section 11).
+- Patterns inspect values, never types: a binder or typed wildcard on a value of type `A` matches without testing anything (section 6.2).
+
+Not yet settled (section 13.1): literal patterns on a scrutinee that is not a union, such as `case n { 0 -> ..., n -> ... }` on a `Num`; a form that names and types at once, such as `path @ some(String)`; and patterns in lambda parameters, which are not planned for now, since `case` in the body does the same job.
 
 **Open unions (open).** A union could end with one type variable standing for the rest of its members, so that code can handle some shapes and pass the others through unchanged:
 
@@ -574,7 +586,7 @@ map_err: (r, f) -> case r { { err } -> f(err), other -> other },
 
 with the signature `map_err : ({ err: ?A } | ?B, (A) -> ?C) -> C | B`. The proposal:
 
-- **A catch-all pattern.** A branch whose pattern is a name, such as `other`, matches every member the earlier branches did not, binds the value, and has the rest variable's type. It must be the last branch.
+- **A catch-all pattern.** A binder, such as `other`, as the last branch matches every member the earlier branches did not (see "Patterns" above), and has the rest variable's type.
 - **Shape constraints.** A rest variable comes with the shapes it must not contain: here, `B` has no member with field set `{ err }`, or the first branch would take values that belong to `B`. This mirrors `R lacks name` for record rows (formal core, section 3). Similarly, the members of `C` and `B` in the result must not share a shape with different types.
 - **Errors at instantiation.** A call that instantiates a variable so as to break these constraints, such as `B := { err: String } | 'x`, is a type error reported at that call; the construct itself is allowed.
 - **One variable per union in parameter types.** Matching `'x | { err: Num }` against `{ err: ?A } | ?B` has one solution, `B := 'x`, while matching it against `?B | ?C` has many, so there would be no principal type. A union in a parameter type has at most one variable, as a record has at most one row variable. In a result, such as `C | B`, several variables are fine when the parameters already fix them.
@@ -620,7 +632,7 @@ Each spec has up to three outputs: type constraints, runtime tests, and **constr
 
 ```duetto
 spec config file yields ordering {
-  fs = double { read_text("config.txt") returns "by_name" },
+  fs = double { read_text("config.txt") << "by_name" },
   ada = { name: "Ada" },
   bob = { name: "Bob" },
   ord = load_ordering(fs, "config.txt"),
@@ -702,7 +714,7 @@ Green means pass. How a project treats an inconclusive run, for example in CI, i
 
 **No recipe contains a double.** A double is written in a spec, so a value that can still reach one is a fixture and is never catalogued (section 10.5). A recipe may still have been **built** with a double: `load_ordering(fs_double, ...)` can read its configuration through the double while it constructs the ordering, and the result is catalogued if the ordering itself no longer refers to `fs`.
 
-This rules out a problem that would otherwise arise. Suppose `f = make_lookup(store)`, where `store = double { get("a") returns 1 }`, and `f` calls `store` whenever it is invoked. If `f` were catalogued as a `(String) -> Num`, another spec's `some((String) -> Num)` would call it with a generated string, and the double would have no answer. That spec, and the spec that built `f`, are both correct, so neither should fail, and whether the problem appeared would depend on generated inputs. Not cataloguing values that can reach a double avoids this, with no need for recipes to be invalidated after admission. What is lost is law checking of such values. Their behavior depends on a test script, though, so laws would be testing the script rather than an implementation.
+This rules out a problem that would otherwise arise. Suppose `f = make_lookup(store)`, where `store = double { get("a") << 1 }`, and `f` calls `store` whenever it is invoked. If `f` were catalogued as a `(String) -> Num`, another spec's `some((String) -> Num)` would call it with a generated string, and the double, which has no stub for other inputs, would have no answer. That spec, and the spec that built `f`, are both correct, so neither should fail, and whether the problem appeared would depend on generated inputs. Not cataloguing values that can reach a double avoids this, with no need for recipes to be invalidated after admission. What is lost is law checking of such values. Their behavior depends on a test script, though, so laws would be testing the script rather than an implementation.
 
 ### 10.8 Failure reporting
 
@@ -743,15 +755,48 @@ Doubles are a core language feature, not a library, because specs must be writab
 
 - A spec can construct a test value standing in for a dependency.
 - The double has an ordinary structural type, typically an exact record of functions.
-- The spec **stubs** responses for specific inputs. Entries are comma-separated, of the form `fn(args) returns expr`. Arguments are matched against the actual arguments with `==`.
+- The spec **stubs** responses for specific inputs. Stubs are comma-separated, of the form `fn(args) << response`, and are described below.
 - The response is evaluated **at call time**. A failing dependency is stubbed by returning a failure value, such as `{ not_found: { path: "a.cfg" } }` (section 11.1).
 - **The stubs of one function share its parameter types, and its result type is the join of their responses.** Responses of different shapes form a struct union (section 9): the double is the spec's own statement of what the dependency can return.
 - A call with an input that was not stubbed fails the spec.
 - Expected interactions are checked explicitly, with `calls` (section 11.2).
 
+**Stub syntax (decided).** A double's body is a list of stubs, and `double` is a keyword:
+
+```text
+Double ::= double "{" Stub ("," Stub)* ","? "}"
+Stub   ::= name "(" (Pattern ("," Pattern)*)? ")" ("<<" Expr)+
+```
+
+- **`<<` marks the response**, as it marks the value a block produces (section 3.3): `read_text("a.cfg") << "content"` says what the call produces. `<<` is not an operator inside expressions, so a response ends where the next `<<`, `,` or `}` begins.
+- **Arguments are patterns** (section 9), one per parameter:
+  - A literal, such as `"a.cfg"`, matches with `==`; `^cfg_path` matches the value of a local.
+  - A binder, such as `path`, matches anything and names it for the responses: `read_text(path) << { not_found: { path } }`.
+  - `some(T)` is a **typed wildcard**: it matches every value of `T`. This is the reading `some` has everywhere, "for every value of `T`" (section 7.2), except that in a stub nothing is generated.
+  - A record pattern matches part of an argument, as in `save({ path: "a.cfg", .. })`.
+- **Parameter types.** Extraction needs each parameter's type. Literals fix it, as `"a.cfg"` makes the parameter a `String`, and so does a typed wildcard: `some(String)` makes it a `String`, and `some(?A)` makes it generic. A binder fixes nothing, so its type must come from another stub of the same function or from a typed wildcard; otherwise extraction reports the type as not fully constrained (formal core, section 6.4).
+- **The first matching stub answers.** Stubs are tried in order, as `case` branches are, so a wildcard or binder stub follows the specific ones. A stub whose arguments are entirely covered by earlier stubs is an error.
+- **Repeated calls get successive responses.** A chain `<< r1 << r2 << r3` gives `r1` to the first call the stub answers, `r2` to the second, and so on; each stub counts the calls it answers, so a wildcard stub's chain advances on every call it matches. After the last response, **the last response repeats**, which is also what a single response means. Responses that run out, or that repeat in a cycle, were considered; repeating is what mocking frameworks do, and a spec that needs to rule out extra calls can count them with `calls`.
+- **All responses of all stubs of a function** join into its result type, so a chain may mix shapes:
+
+```duetto
+spec fetching retries after timeouts {
+  net = double {
+    fetch("a") << 'timeout << 'timeout << { ok: "data" },
+    fetch(some(String)) << 'unreachable,
+  },
+  ensure fetch_with_retry(net, "a") == { ok: "data" },
+  ensure length(calls(net.fetch)) == 3,
+},
+```
+
+Here `net`'s type is `{ fetch: (String) -> 'timeout | 'unreachable | { ok: String } }`.
+
+A response can use the arguments its stub's binders matched, as in `read_text(path) << { not_found: { path } }` after a `read_text("ok.cfg") << { ok: "content" }` stub that fixes the parameter's type.
+
 ```duetto
 spec loading settings works {
-  fs = double { read_text("settings.json") returns "{ theme: \"dark\" }" },
+  fs = double { read_text("settings.json") << "{ theme: \"dark\" }" },
   settings = load_settings(fs, "settings.json"),
   ensure settings.theme == "dark",
 }
@@ -771,8 +816,8 @@ read_file: (fs, path) -> case fs.read_text(path) {
 
 spec read_file returns content or reports a missing file {
   fs = double {
-    read_text("ok.cfg") returns { ok: "content" },
-    read_text("a.cfg") returns { not_found: { path: "a.cfg" } },
+    read_text("ok.cfg") << { ok: "content" },
+    read_text("a.cfg") << { not_found: { path: "a.cfg" } },
   },
   ensure read_file(fs, "ok.cfg") == { ok: "content" },
   ensure read_file(fs, "a.cfg") == { err: "missing: a.cfg" },
@@ -791,7 +836,7 @@ Extracted: `read_file : ({ read_text: (String) -> { ok: String } | { not_found: 
 
 ```duetto
 spec settings are read once {
-  fs = double { read_text("settings.json") returns "{ theme: \"dark\" }" },
+  fs = double { read_text("settings.json") << "{ theme: \"dark\" }" },
   settings = load_settings(fs, "settings.json"),
   ensure settings.theme == "dark",
   ensure calls(fs.read_text) == ["settings.json"],
@@ -914,7 +959,7 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 ### 13.1 Open questions
 
 - **Choice data.** Tagged unions are not adopted. Struct unions (section 9) take their place, and section 13.4 plans the rest.
-- **Open unions** (section 9). Unions ending with one rest variable, as in `map_err : ({ err: ?A } | ?B, (A) -> ?C) -> C | B`. Recommendation: allow them, with a catch-all binder pattern as the last `case` branch, shape constraints on the rest variable checked at each instantiation, and at most one variable per union in parameter types. Open points: the catch-all pattern's syntax, since a bare name is new as a pattern; whether a catch-all is allowed on unions without a rest variable, as a shorthand for the remaining members; and how extraction forms a rest variable from specs.
+- **Open unions** (section 9). Unions ending with one rest variable, as in `map_err : ({ err: ?A } | ?B, (A) -> ?C) -> C | B`. Recommendation: allow them, with a catch-all binder pattern as the last `case` branch, shape constraints on the rest variable checked at each instantiation, and at most one variable per union in parameter types. A final binder is also allowed on unions without a rest variable, where it covers the remaining members (section 9). Open point: how extraction forms a rest variable from specs.
 - **Preconditions** (section 7.1). The whole precondition rule is under design: the syntactic test, the blame rules, and discarding. The two items below are open points within it.
 - **Preconditions in law specs** (section 7.1). An implementation could escape a law by a precondition that rejects the summoned values the law is checked with. The options: (1) discard as in other specs, and report a law spec whose cases were all discarded, as for any spec; (2) also report every discard in a law spec, since a law should hold for every value of the interface's type; (3) treat a precondition that fails in a law spec as a failure of the law. Recommendation: (1) for now, since it is the general rule, with discard counts shown in the report so that a law checked mostly on rejected inputs is visible.
 - **Generating inputs that satisfy preconditions.** Discarding wastes generated cases when a precondition rejects most of them. A later step could use preconditions to guide `some` (section 7.4).
@@ -948,11 +993,12 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 - **Handlers** (section 16). Whether and when to bring back `try`, handler `case`, and second-class values. They can be added without breaking programs that return unions, but they would give the language two idioms for failure.
 - **Label sets shared between field checks** (formal core, section 9.2).
 - **Termination.** Reading `some` specs as proofs would require totality of the production functions involved, probably through an opt-in marker. Without it, the logical reading is partial correctness.
-- **Exact syntax** for imports and doubles.
+- **Exact syntax** for imports.
+- **Patterns** (section 9). One pattern language serves `case` and doubles; the sigil `^` for pinned values is provisional. Open: literal patterns on a scrutinee that is not a union (recommendation: allow them, since they inspect values, and a final binder keeps the `case` exhaustive); a form that names and types at once, such as `path @ some(String)` (recommendation: defer until a stub needs it, since another stub or a typed wildcard usually fixes a binder's type); and patterns in lambda parameters (not planned for now).
 
 ### 13.2 Deferred
 
-- List deconstruction and pattern matching (planned)
+- List deconstruction and list patterns (planned; the pattern language is in section 9)
 - Mutable state
 - Exact generator semantics for all `some(T)` forms
 - Imports, and abstract types in modules. Abstract types will need a way to state whether `==` may see through them.
