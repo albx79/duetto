@@ -17,12 +17,6 @@ type role =
   | Do_role
   | Other_role                  (* locals, private types, ensure, spec *)
 
-let diagnostic_position (pos : Lexing.position) : Diagnostic.position = {
-  filename = pos.pos_fname;
-  line = pos.pos_lnum;
-  column = pos.pos_cnum - pos.pos_bol + 1;
-}
-
 let error e = raise (Diagnostic.Error e)
 
 (* A brace group with a result is a block, and a block has no fields or
@@ -47,6 +41,23 @@ let check_file_entries entries result =
     | Do_role -> error (Diagnostic.Do_in_file { position })
     | Field_role _ | Public_type_role _ | Other_role -> ())
     entries
+
+(* A spec body has locals, private types and ensures only (spec, section
+   3.2): it is parsed like any brace group, so that the error can say what
+   is wrong instead of reporting an unexpected token. *)
+let check_spec_entries entries result =
+  List.iter (fun (role, position, _) ->
+    match role with
+    | Field_role name ->
+        error (Diagnostic.Field_in_spec { name; is_type = false; position })
+    | Public_type_role name ->
+        error (Diagnostic.Field_in_spec { name; is_type = true; position })
+    | Do_role -> error (Diagnostic.Do_in_spec { position })
+    | Other_role -> ())
+    entries;
+  match result with
+  | Some (_, position) -> error (Diagnostic.Result_in_spec { position })
+  | None -> ()
 
 let nodes entries = List.map (fun (_, _, entry) -> entry) entries
 
@@ -83,16 +94,11 @@ let expr_of_path start_pos end_pos path =
 %right ARROW
 (* Above ARROW: in a type, (A) -> B | C is (A) -> (B | C). *)
 %left BAR
-(* A comparison, ord ? a < b, is non-associative at the level of ==; its
-   operands bind as arithmetic does, and its ordering, before ?, binds
-   tighter still, so ord ? x + 1 < y compares x + 1 with y (spec, section
-   6.2). The operators after ? need no precedence: they cannot follow an
-   operand anywhere else. *)
-%nonassoc EQEQ
 %left PLUS MINUS CONCAT
 %left TIMES DIV MOD
-%nonassoc QUESTION
-%left DOT LPAREN
+(* Unary minus binds tighter than the binary operators, so -2 * x is
+   (-2) * x, and looser than calls and projection, so -p.age is -(p.age). *)
+%nonassoc UMINUS
 
 %start <A.expr> main
 %start <A.expr> expr_main
@@ -108,7 +114,37 @@ main:
 expr_main:
     expr EOF { $1 }
 
+(* Expressions have three levels (spec, section 6.2). [expr] is the top:
+   an arithmetic expression, an equality, a comparison or a lambda. An
+   equality or a comparison is non-associative and cannot be an operand, so
+   "a == b == c", "a + ord ? x < y" and "ord ? a == b < c" are errors. A
+   lambda's body extends as far as it can, so a lambda is never an operand
+   either. [arith] has the arithmetic operators and "++". [primary] has
+   everything that binds tighter, and is what can be a comparison's
+   ordering. Contexts that are not operands, such as arguments, list items
+   and lambda bodies, take an [expr]. *)
 expr:
+    | arith                { $1 }
+    | arith EQEQ arith     { mk (Eq ($1, $3)) $startpos $endpos }
+    | primary QUESTION arith comparison arith
+        { mk (Compare ($1, $4, $3, $5)) $startpos $endpos }
+    | LIDENT ARROW expr    { mk (Lambda ([$1], $3)) $startpos $endpos }
+    | LPAREN RPAREN ARROW expr { mk (Lambda ([], $4)) $startpos $endpos }
+    | LPAREN LIDENT RPAREN ARROW expr { mk (Lambda ([$2], $5)) $startpos $endpos }
+    | LPAREN LIDENT COMMA lambda_params_rest RPAREN ARROW expr
+        { mk (Lambda ($2 :: $4, $7)) $startpos $endpos }
+
+arith:
+    | primary              { $1 }
+    | arith CONCAT arith   { mk (Concat ($1, $3)) $startpos $endpos }
+    | arith PLUS arith     { mk (Add ($1, $3)) $startpos $endpos }
+    | arith MINUS arith    { mk (Sub ($1, $3)) $startpos $endpos }
+    | arith TIMES arith    { mk (Mul ($1, $3)) $startpos $endpos }
+    | arith DIV arith      { mk (Div ($1, $3)) $startpos $endpos }
+    | arith MOD arith      { mk (Mod ($1, $3)) $startpos $endpos }
+    | MINUS arith %prec UMINUS { mk (Neg $2) $startpos $endpos }
+
+primary:
     | NUM                  { mk (Num $1) $startpos $endpos }
     | STRING               { mk (String $1) $startpos $endpos }
     | LABEL                { mk (Label $1) $startpos $endpos }
@@ -116,11 +152,6 @@ expr:
         { mk (Case ($2, $4)) $startpos $endpos }
     | DOUBLE LBRACE stubs RBRACE
         { mk (Double $3) $startpos $endpos }
-    | LIDENT ARROW expr    { mk (Lambda ([$1], $3)) $startpos $endpos }
-    | LPAREN RPAREN ARROW expr { mk (Lambda ([], $4)) $startpos $endpos }
-    | LPAREN LIDENT RPAREN ARROW expr { mk (Lambda ([$2], $5)) $startpos $endpos }
-    | LPAREN LIDENT COMMA lambda_params_rest RPAREN ARROW expr
-        { mk (Lambda ($2 :: $4, $7)) $startpos $endpos }
     (* "(x)" is ambiguous until the token after ")": a lambda's parameter list
        if it is "->", a parenthesised x otherwise. So after "( x" with ")"
        next, x is not reduced to an expression (the %prec below), and "(x)"
@@ -131,17 +162,8 @@ expr:
     | EVERY LPAREN type_expr RPAREN { mk (Every $3) $startpos $endpos }
     | struct_expr          { $1 }
     | list_expr            { $1 }
-    | expr DOT LIDENT      { mk (Proj ($1, $3)) $startpos $endpos }
-    | expr LPAREN expr_items RPAREN { mk (Call ($1, $3)) $startpos $endpos }
-    | expr EQEQ expr       { mk (Eq ($1, $3)) $startpos $endpos }
-    | expr QUESTION expr comparison expr %prec EQEQ
-        { mk (Compare ($1, $4, $3, $5)) $startpos $endpos }
-    | expr CONCAT expr     { mk (Concat ($1, $3)) $startpos $endpos }
-    | expr PLUS expr       { mk (Add ($1, $3)) $startpos $endpos }
-    | expr MINUS expr      { mk (Sub ($1, $3)) $startpos $endpos }
-    | expr TIMES expr      { mk (Mul ($1, $3)) $startpos $endpos }
-    | expr DIV expr        { mk (Div ($1, $3)) $startpos $endpos }
-    | expr MOD expr        { mk (Mod ($1, $3)) $startpos $endpos }
+    | primary DOT LIDENT   { mk (Proj ($1, $3)) $startpos $endpos }
+    | primary LPAREN expr_items RPAREN { mk (Call ($1, $3)) $startpos $endpos }
     | LPAREN expr RPAREN   { $2 }
 
 %inline comparison:
@@ -163,6 +185,9 @@ case_branch:
 pattern:
     | LABEL { mk (Label_pattern $1) $startpos $endpos }
     | NUM { mk (Num_pattern $1) $startpos $endpos }
+    (* A pattern is a literal, not an expression, so "-" is allowed only
+       before a number. *)
+    | MINUS NUM { mk (Num_pattern ("-" ^ $2)) $startpos $endpos }
     | STRING { mk (String_pattern $1) $startpos $endpos }
     | LIDENT { mk (Binder $1) $startpos $endpos }
     | CARET LIDENT { mk (Pinned $2) $startpos $endpos }
@@ -259,7 +284,7 @@ entries_tail(entry):
 file_entry:
     | nonresult_entry { $1 }
     | SPEC LBRACE spec_body RBRACE
-        { (Other_role, diagnostic_position $startpos,
+        { (Other_role, Position.of_lexing $startpos,
            mk (Spec (spec_title $1, $3)) $startpos $endpos) }
 
 (* A spec in a nested struct is parsed, so that the error can say what is
@@ -269,21 +294,16 @@ struct_entry:
     | SPEC LBRACE spec_body RBRACE
         { error (Diagnostic.Nested_spec {
             title = Spec_title.to_string $1;
-            position = diagnostic_position $startpos;
+            position = Position.of_lexing $startpos;
           }) }
 
 (* A spec's body: locals, private types and ensures, comma-separated, with
    an optional trailing comma. *)
 spec_body:
-    | { [] }
-    | spec_entry { [$1] }
-    | spec_entry COMMA spec_body { $1 :: $3 }
-
-spec_entry:
-    | LIDENT EQUAL expr { mk (Local ($1, $3)) $startpos $endpos }
-    | UIDENT type_params EQUAL type_expr
-        { mk (Type_local ($1, $2, $4)) $startpos $endpos }
-    | ENSURE expr { mk (Ensure $2) $startpos $endpos }
+    | entries(struct_entry)
+        { let (entries, result) = $1 in
+          check_spec_entries entries result;
+          nodes entries }
 
 opt_comma:
     | { () }
@@ -291,7 +311,7 @@ opt_comma:
 
 nonresult_entry:
     | nonresult_node
-        { let (role, node) = $1 in (role, diagnostic_position $startpos, node) }
+        { let (role, node) = $1 in (role, Position.of_lexing $startpos, node) }
 
 nonresult_node:
     | LIDENT COLON expr { (Field_role $1, mk (Field ($1, $3)) $startpos $endpos) }
@@ -338,7 +358,7 @@ type_param_list:
     | UIDENT COMMA type_param_list { $1 :: $3 }
 
 result_entry:
-    | RESULT expr { ($2, diagnostic_position $startpos) }
+    | RESULT expr { ($2, Position.of_lexing $startpos) }
 
 (* A union (spec, section 4.2): two or more members separated by "|". *)
 type_expr:
@@ -384,7 +404,7 @@ atomic_type_expr:
         { match $2 with
           | ([(_, members)], false) -> members
           | _ -> error (Diagnostic.Tuple_type {
-                   position = diagnostic_position $startpos;
+                   position = Position.of_lexing $startpos;
                  }) }
 
 (* Types separated by commas, each with its union members, and whether there

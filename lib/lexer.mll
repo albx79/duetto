@@ -1,13 +1,65 @@
 {
 open Tokens
 
-let position_of (pos : Lexing.position) : Diagnostic.position = {
-  filename = pos.pos_fname;
-  line = pos.pos_lnum;
-  column = pos.pos_cnum - pos.pos_bol + 1;
-}
+(* Columns count characters, not bytes. Source text is read as UTF-8, and
+   non-ASCII characters can only occur in strings, comments and
+   spec titles. After such a lexeme, [account_for] moves [pos_bol] forward
+   by one for each continuation byte on the current line, so that
+   [pos_cnum - pos_bol], which [Position.of_lexing] uses, counts characters.
+   [pos_bol] is therefore not a byte offset; nothing else uses it. *)
+let is_continuation_byte c = Char.code c land 0xC0 = 0x80
+
+(* The Lexing position of the character at [offset] in the current lexeme,
+   which may span lines, as a spec title does. *)
+let lexing_position_in_lexeme lexbuf offset : Lexing.position =
+  let start = Lexing.lexeme_start_p lexbuf in
+  let text = Lexing.lexeme lexbuf in
+  let line = ref start.pos_lnum and bol = ref start.pos_bol in
+  for i = 0 to offset - 1 do
+    if text.[i] = '\n' then begin
+      incr line;
+      bol := start.pos_cnum + i + 1
+    end
+    else if is_continuation_byte text.[i] then incr bol
+  done;
+  { start with pos_lnum = !line; pos_bol = !bol; pos_cnum = start.pos_cnum + offset }
+
+(* Moves the end of the current lexeme past its newlines and non-ASCII
+   characters. [Lexing.new_line] only handles a lexeme that ends with its
+   one newline. *)
+let account_for lexbuf =
+  let text = Lexing.lexeme lexbuf in
+  let end_pos = lexing_position_in_lexeme lexbuf (String.length text) in
+  lexbuf.Lexing.lex_curr_p <- end_pos
+
+let position_in_lexeme lexbuf offset =
+  Position.of_lexing (lexing_position_in_lexeme lexbuf offset)
 
 let error e = raise (Diagnostic.Error e)
+
+let keyword_as_name lexbuf keyword =
+  error (Diagnostic.Keyword_as_name {
+    keyword;
+    position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
+  })
+
+(* Whether a spec title starts with "=" or ":": then "spec" is a name in
+   a local or a field, not the start of a spec entry. *)
+let starts_like_a_binding title =
+  match String.trim title with
+  | "" -> false
+  | t -> t.[0] = '=' || t.[0] = ':'
+
+(* Reports the first character of the current lexeme, a misspelled name,
+   that [bad] accepts. *)
+let bad_character_in_name lexbuf bad =
+  let lexeme = Lexing.lexeme lexbuf in
+  let rec find i = if bad lexeme.[i] then i else find (i + 1) in
+  let i = find 0 in
+  error (Diagnostic.Unexpected_character {
+    character = String.make 1 lexeme.[i];
+    position = position_in_lexeme lexbuf i;
+  })
 
 (* How a token is shown in an error message, as it would be written in the
    source; None for the end of input. *)
@@ -47,33 +99,20 @@ let keyword_or_ident = function
   | "double" -> DOUBLE
   | name -> LIDENT name
 
-(* The position of the character at [offset] in the current lexeme. *)
-let position_in_lexeme lexbuf offset : Diagnostic.position =
-  let start = Lexing.lexeme_start_p lexbuf in
-  let text = Lexing.lexeme lexbuf in
-  let line = ref start.pos_lnum and bol = ref start.pos_bol in
-  for i = 0 to offset - 1 do
-    if text.[i] = '\n' then begin
-      incr line;
-      bol := start.pos_cnum + i + 1
-    end
-  done;
-  { filename = start.pos_fname;
-    line = !line;
-    column = start.pos_cnum + offset - !bol + 1 }
+(* The spelling of a keyword token that would otherwise be a name, as
+   returned by [keyword_or_ident]. *)
+let keyword_name = function
+  | DO -> Some "do" | CASE -> Some "case" | SOME -> Some "some"
+  | EVERY -> Some "every" | ENSURE -> Some "ensure" | DOUBLE -> Some "double"
+  | _ -> None
 
-(* The Lexing position of the character at [offset] in the current lexeme. *)
-let lexing_position_in_lexeme lexbuf offset : Lexing.position =
-  let start = Lexing.lexeme_start_p lexbuf in
-  let text = Lexing.lexeme lexbuf in
-  let line = ref start.pos_lnum and bol = ref start.pos_bol in
-  for i = 0 to offset - 1 do
-    if text.[i] = '\n' then begin
-      incr line;
-      bol := start.pos_cnum + i + 1
-    end
-  done;
-  { start with pos_lnum = !line; pos_bol = !bol; pos_cnum = start.pos_cnum + offset }
+let name_token name = LIDENT name
+
+(* Entry keywords followed by an expression, as in "ensure x == 1", and the
+   tokens that end an entry. "{ ensure }" reads as a missing expression
+   rather than as a punned field named ensure. *)
+let takes_expression = function ENSURE | DO -> true | _ -> false
+let ends_entry = function COMMA | RBRACE | EOF -> true | _ -> false
 
 let is_lident_start c = (c >= 'a' && c <= 'z') || c = '_'
 let is_lident_char c = is_lident_start c || (c >= '0' && c <= '9')
@@ -171,23 +210,9 @@ let spec_title lexbuf offset title : Spec_title.t =
   in
   if segments = [] then
     error (Diagnostic.Missing_spec_title {
-      position = position_of (Lexing.lexeme_start_p lexbuf);
+      position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
     });
   segments
-
-(* Advance the line counter past every newline in [text], which was just
-   matched in one lexeme. [Lexing.new_line] only handles a lexeme that ends
-   with the newline. *)
-let skip_newlines lexbuf text =
-  let start = Lexing.lexeme_start_p lexbuf in
-  String.iteri (fun i c ->
-    if c = '\n' then
-      lexbuf.Lexing.lex_curr_p <- {
-        lexbuf.Lexing.lex_curr_p with
-        pos_lnum = lexbuf.Lexing.lex_curr_p.pos_lnum + 1;
-        pos_bol = start.pos_cnum + i + 1;
-      })
-    text
 }
 
 let digit = ['0'-'9']
@@ -199,6 +224,12 @@ let uident_start = ['A'-'Z']
 let uident_char = ['a'-'z' 'A'-'Z' '0'-'9']
 let ident_char = ['a'-'z' 'A'-'Z' '0'-'9' '_']
 let whitespace = [' ' '\t' '\r']+
+(* One non-ASCII character in well-formed UTF-8. *)
+let utf8_continuation = ['\x80'-'\xbf']
+let utf8_multibyte =
+    ['\xc2'-'\xdf'] utf8_continuation
+  | ['\xe0'-'\xef'] utf8_continuation utf8_continuation
+  | ['\xf0'-'\xf4'] utf8_continuation utf8_continuation utf8_continuation
 
 rule token = parse
   | whitespace { token lexbuf }
@@ -206,23 +237,38 @@ rule token = parse
       Lexing.new_line lexbuf;
       token lexbuf
     }
-  | "#!" | "#[" | "]#" | "#_" as token{
+  (* Reserved tokens (spec, section 3.7). The ones starting with '#' also
+     match the rest of the line: otherwise the comment rule below would be
+     the longest match, and "#!x" would be read as a comment. With equal
+     lengths, the earlier rule wins. Inside a comment they are just text. *)
+  | (("#!" | "#[" | "#_") as token) [^ '\n']*
+  | ("]#" as token) {
         error (Diagnostic.Reserved_token {
           token;
-          position = position_of (Lexing.lexeme_start_p lexbuf);
+          position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
         })
       }
-  | "#" [^ '\n']* { token lexbuf }
+  | "#" [^ '\n']* { account_for lexbuf; token lexbuf }
 
-  (* A spec title is free text up to the opening brace (spec, section 3.6). *)
+  (* A spec title is free text up to the opening brace (spec, section 3.6).
+     A title never starts with "=" or ":", so "spec = 1" and "spec : 1"
+     use spec as a name. This is checked first, because the title would run
+     on to the next "{" and fail with a confusing error, or none. *)
   | "spec" ([' ' '\t' '\r' '\n'] [^ '{']* as title) {
+      if starts_like_a_binding title then keyword_as_name lexbuf "spec";
       let title = spec_title lexbuf 4 title in
-      skip_newlines lexbuf (Lexing.lexeme lexbuf);
+      account_for lexbuf;
       SPEC title
+    }
+  (* "spec" followed by neither whitespace nor "{", as in "spec:" or
+     "f(spec)": it is used as a name. Name characters are left out, so
+     that "specs" and "spec_x" remain names. *)
+  | "spec" ([^ ' ' '\t' '\r' '\n' '{' 'a'-'z' 'A'-'Z' '0'-'9' '_'] | eof) {
+      keyword_as_name lexbuf "spec"
     }
   | "spec" {
       error (Diagnostic.Missing_spec_title {
-        position = position_of (Lexing.lexeme_start_p lexbuf);
+        position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
       })
     }
 
@@ -233,24 +279,26 @@ rule token = parse
       lexbuf.lex_start_p <- start;
       STRING s
     }
+  (* Value names and labels are snake_case, and type names are PascalCase
+     (spec, section 3.8): "readFile" and "Foo_Bar" are errors, not two
+     tokens. These rules are longer matches than the valid names. *)
+  | '\'' lident_start lident_char* uident_start ident_char* {
+      bad_character_in_name lexbuf (fun c -> c >= 'A' && c <= 'Z')
+    }
   | '\'' (lident_start lident_char* as l) { LABEL l }
+  | lident_start lident_char* uident_start ident_char* {
+      bad_character_in_name lexbuf (fun c -> c >= 'A' && c <= 'Z')
+    }
   | lident_start lident_char* as name { keyword_or_ident name }
   | uident_start uident_char* '_' ident_char* {
-      let lexeme = Lexing.lexeme lexbuf in
-      let underscore_index = String.index lexeme '_' in
-      let start = Lexing.lexeme_start_p lexbuf in
-      let underscore_pos = {
-        start with
-        pos_cnum = start.pos_cnum + underscore_index;
-      } in
-      error (Diagnostic.Unexpected_character {
-        character = "_";
-        position = position_of underscore_pos;
-      })
+      bad_character_in_name lexbuf (fun c -> c = '_')
     }
   | uident_start uident_char* as name { UIDENT name }
   (* The first occurrence of a type variable (spec, section 4.7). Like a
      label, it is one token, so "? A" is not a type variable. *)
+  | '?' uident_start uident_char* '_' ident_char* {
+      bad_character_in_name lexbuf (fun c -> c = '_')
+    }
   | '?' (uident_start uident_char* as name) { TYPE_VAR name }
 
   | "->" { ARROW }
@@ -286,10 +334,27 @@ rule token = parse
 
   | eof { EOF }
 
-  | _ as character {
+  | utf8_multibyte as character {
       error (Diagnostic.Unexpected_character {
-        character = String.make 1 character;
-        position = position_of (Lexing.lexeme_start_p lexbuf);
+        character;
+        position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
+      })
+    }
+  | ['\x80'-'\xff'] as byte {
+      error (Diagnostic.Invalid_utf8 {
+        byte = Char.code byte;
+        position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
+      })
+    }
+  | _ as character {
+      let character =
+        if character < ' ' || character = '\x7f'
+        then Printf.sprintf "\\x%02X" (Char.code character)
+        else String.make 1 character
+      in
+      error (Diagnostic.Unexpected_character {
+        character;
+        position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
       })
     }
 
@@ -299,13 +364,17 @@ and string buf start = parse
   | "\\\\" { Buffer.add_char buf '\\'; string buf start lexbuf }
   | "\\n" { Buffer.add_char buf '\n'; string buf start lexbuf }
   | "\\t" { Buffer.add_char buf '\t'; string buf start lexbuf }
-  | '\\' (_ as c) {
+  | '\\' ((utf8_multibyte | _) as c) {
       error (Diagnostic.Invalid_escape {
-        sequence = Printf.sprintf "\\%c" c;
-        position = position_of (Lexing.lexeme_start_p lexbuf);
+        sequence = "\\" ^ c;
+        position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
       })
     }
   | '\n' | eof {
-      error (Diagnostic.Unterminated_string { position = position_of start })
+      error (Diagnostic.Unterminated_string { position = Position.of_lexing start })
     }
-  | [^ '"' '\\' '\n']+ as s { Buffer.add_string buf s; string buf start lexbuf }
+  | [^ '"' '\\' '\n']+ as s {
+      account_for lexbuf;
+      Buffer.add_string buf s;
+      string buf start lexbuf
+    }

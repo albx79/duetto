@@ -1,12 +1,12 @@
-type position = {
-  filename: string;
-  line: int;
-  column: int;
-}
+type position = Position.t
 
 type error =
   | Unexpected_character of {
       character: string;
+      position: position;
+    }
+  | Invalid_utf8 of {
+      byte: int;
       position: position;
     }
   | Unterminated_string of {
@@ -39,6 +39,14 @@ type error =
   | Missing_spec_title of {
       position: position;
     }
+  | Keyword_as_name of {
+      keyword: string;
+      position: position;
+    }
+  | Missing_expression of {
+      keyword: string;
+      position: position;
+    }
   | Unclosed_title_mark of {
       position: position;
     }
@@ -64,19 +72,30 @@ type error =
   | Do_in_file of {
       position: position;
     }
+  | Field_in_spec of {
+      name: string;
+      is_type: bool;
+      position: position;
+    }
+  | Do_in_spec of {
+      position: position;
+    }
+  | Result_in_spec of {
+      position: position;
+    }
 
 exception Error of error
 
-let string_of_position pos =
-  Printf.sprintf "%s:%d:%d"
-    pos.filename
-    pos.line
-    pos.column
+let string_of_position = Position.to_string
 
 let string_of_error = function
   | Unexpected_character { character; position } ->
       Printf.sprintf "Unexpected character '%s' at %s"
         character (string_of_position position)
+
+  | Invalid_utf8 { byte; position } ->
+      Printf.sprintf "The byte 0x%02X at %s is not valid UTF-8 (source files must be UTF-8)"
+        byte (string_of_position position)
 
   | Unterminated_string { position } ->
       Printf.sprintf "Unterminated string literal starting at %s"
@@ -152,7 +171,35 @@ let string_of_error = function
         "The 'do' at %s is at file level: a file is a static struct and performs no actions"
         (string_of_position position)
 
+  | Field_in_spec { name; is_type = false; position } ->
+      Printf.sprintf
+        "The field '%s' at %s is in a spec: a spec body cannot have fields (use '%s = ...' for a local)"
+        name (string_of_position position) name
+
+  | Field_in_spec { name; is_type = true; position } ->
+      Printf.sprintf
+        "The public type '%s' at %s is in a spec: a spec body cannot have public types (use '%s = ...' for a private type)"
+        name (string_of_position position) name
+
+  | Do_in_spec { position } ->
+      Printf.sprintf
+        "The 'do' at %s is in a spec: a spec body performs no actions"
+        (string_of_position position)
+
+  | Result_in_spec { position } ->
+      Printf.sprintf
+        "The '<<' at %s is in a spec: a spec body has no result"
+        (string_of_position position)
+
   | Missing_spec_title { position } ->
       Printf.sprintf "The spec at %s has no title"
         (string_of_position position)
+
+  | Keyword_as_name { keyword; position } ->
+      Printf.sprintf "'%s' at %s is a keyword and cannot be used as a name"
+        keyword (string_of_position position)
+
+  | Missing_expression { keyword; position } ->
+      Printf.sprintf "'%s' at %s needs an expression"
+        keyword (string_of_position position)
 

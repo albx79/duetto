@@ -20,7 +20,7 @@ let expect_tree parse name src expected =
       Printf.printf "FAIL %s\n  expected parse success\n  actual error: %s\n" name
         (Duetto.Diagnostic.string_of_error e)
 
-(* [parse] must fail, with the message [expected] unless it is "". *)
+(* [parse] must fail with the message [expected]. *)
 let expect_error parse name src expected =
   match parse src with
   | _ ->
@@ -28,14 +28,14 @@ let expect_error parse name src expected =
       Printf.printf "FAIL %s\n  expected parse error\n  actual: parse succeeded\n" name
   | exception Duetto.Diagnostic.Error e ->
       let actual = Duetto.Diagnostic.string_of_error e in
-      if expected <> "" && actual <> expected then begin
+      if actual <> expected then begin
         incr failures;
         Printf.printf "FAIL %s\n  expected error: %s\n  actual error:   %s\n"
           name expected actual
       end
 
 let check = expect_tree parse_expr
-let check_error name src = expect_error parse_expr name src ""
+let check_error = expect_error parse_expr
 let check_file = expect_tree parse_file
 let check_file_error = expect_error parse_file
 
@@ -53,8 +53,17 @@ let check_accepted_file path =
       Printf.printf "FAIL %s\n  expected parse success\n  actual error: %s\n" path
         (Duetto.Diagnostic.string_of_error e)
 
+(* Every .duetto file in test/duetto: test/dune passes them as arguments.
+   Sorted, so failures are reported in a stable order. *)
+let accepted_files () =
+  Array.to_list Sys.argv |> List.tl |> List.sort compare
+
 let () =
-  check_accepted_file "duetto/accepted-specs.duetto";
+  (match accepted_files () with
+   | [] ->
+       incr failures;
+       print_endline "FAIL no .duetto files given (check the deps in test/dune)"
+   | paths -> List.iter check_accepted_file paths);
 
   (* Records, blocks, spec bodies and files allow different entries
      (spec, sections 3.2 and 3.3). *)
@@ -105,8 +114,16 @@ let () =
         Ensure (Eq (Call (Proj (Ident "natural", "compare"), [Num "1"; Num "1"]), Label "eq"));
       ]);
     ]);
-  check_file_error "no public types in a spec" "spec s { T: Num }" "";
-  check_file_error "no do in a spec" "spec s { do f() }" "";
+  check_file_error "no public types in a spec" "spec s { T: Num }"
+    "The public type 'T' at :1:10 is in a spec: a spec body cannot have public types (use 'T = ...' for a private type)";
+  check_file_error "no punned types in a spec" "spec s { m.Bool }"
+    "The public type 'Bool' at :1:10 is in a spec: a spec body cannot have public types (use 'Bool = ...' for a private type)";
+  check_file_error "no do in a spec" "spec s { do f() }"
+    "The 'do' at :1:10 is in a spec: a spec body performs no actions";
+  check_file_error "end of input after a non-ASCII comment" "x: # café"
+    "Unexpected end of input at :1:10";
+  check_file_error "token after a non-ASCII string" "x: \"日本\" 1"
+    "Unexpected token '1' at :1:9";
   check_file_error "error names a string token" "x: \"abc\" \"def\""
     "Unexpected token '\"def\"' at :1:10";
   check_file_error "error names a spec token" "x: 1 spec title {}"
@@ -161,16 +178,21 @@ let () =
     ]));
   check "case is an expression" "case x { 'a -> 1 } + 1"
     (Add (Case (Ident "x", [{ pattern = Label_pattern "a"; body = Num "1" }]), Num "1"));
-  check_error "case needs a branch" "case x {}";
-  check_error "case needs braces" "case x 'a -> 1";
+  check_error "case needs a branch" "case x {}"
+    "Unexpected token '}' at :1:9";
+  check_error "case needs braces" "case x 'a -> 1"
+    "Unexpected token ''a' at :1:8";
   check "binder pattern" "case x { 'a -> 1, y -> 2 }"
     (Case (Ident "x", [
       { pattern = Label_pattern "a"; body = Num "1" };
       { pattern = Binder "y"; body = Num "2" };
     ]));
-  check_error "pattern is not an expression" "case x { f(y) -> 1 }";
-  check_error "open pattern ends with .." "case x { { .., a } -> 1 }";
-  check_error "no comma after .." "case x { { a, .., } -> 1 }";
+  check_error "pattern is not an expression" "case x { f(y) -> 1 }"
+    "Unexpected token '(' at :1:11";
+  check_error "open pattern ends with .." "case x { { .., a } -> 1 }"
+    "Unexpected token ',' at :1:14";
+  check_error "no comma after .." "case x { { a, .., } -> 1 }"
+    "Unexpected token ',' at :1:17";
   check "literal and sub-patterns" "case x { 0 -> 'zero, \"one\" -> 'one, { a: 1, b: { c }, .. } -> 'rec, n -> 'other }"
     (Case (Ident "x", [
       { pattern = Num_pattern "0"; body = Label "zero" };
@@ -189,9 +211,12 @@ let () =
     ]));
   check "renaming a field" "case r { { err: e } -> e }"
     (Case (Ident "r", [{ pattern = Record_pattern [("err", Binder "e")]; body = Ident "e" }]));
-  check_error "pin needs a value name" "case x { ^Foo -> 1 }";
-  check_error "pin is not an expression" "^x";
-  check_error "no expressions in patterns" "case x { a + 1 -> 1 }";
+  check_error "pin needs a value name" "case x { ^Foo -> 1 }"
+    "Unexpected token 'Foo' at :1:11";
+  check_error "pin is not an expression" "^x"
+    "Unexpected token '^' at :1:1";
+  check_error "no expressions in patterns" "case x { a + 1 -> 1 }"
+    "Unexpected token '+' at :1:12";
 
   (* Comparisons under an ordering (spec, section 6.2). *)
   check "comparison" "ord ? a < b" (Compare (Ident "ord", Less, Ident "a", Ident "b"));
@@ -208,8 +233,18 @@ let () =
     (Compare (Call (Ident "by", [Ident "key"]), Less, Ident "a", Ident "b"));
   check "operands bind as arithmetic" "ord ? x + 1 < y * 2"
     (Compare (Ident "ord", Less, Add (Ident "x", Num "1"), Mul (Ident "y", Num "2")));
-  check "ordering binds tighter than arithmetic" "a + ord ? x < y"
+  check_error "comparison is not an operand" "a + ord ? x < y"
+    "Unexpected token '?' at :1:9";
+  check "parenthesised comparison as an operand" "a + (ord ? x < y)"
     (Add (Ident "a", Compare (Ident "ord", Less, Ident "x", Ident "y")));
+  check_error "comparison is not an operand of ==" "x == ord ? a < b"
+    "Unexpected token '?' at :1:10";
+  check_error "comparison is not negated" "-ord ? a < b"
+    "Unexpected token '?' at :1:6";
+  check_error "comparison operands are arithmetic" "ord ? a == b < c"
+    "Unexpected token '==' at :1:9";
+  check "parenthesised ordering" "(a + o) ? x < y"
+    (Compare (Add (Ident "a", Ident "o"), Less, Ident "x", Ident "y"));
   check "comparison as a lambda body" "x -> ord ? x < 1"
     (Lambda (["x"], Compare (Ident "ord", Less, Ident "x", Num "1")));
   check "comparison as a case scrutinee" "case ord ? a < b { 'true -> 1, 'false -> 0 }"
@@ -229,8 +264,10 @@ let () =
         Ensure (Eq (Num "1", Num "1"));
       ])]);
   check "every" "every(Ordering(?A))" (Every (Type_apply ([], "Ordering", [Type_var "A"])));
-  check_error "every is not a pattern" "case x { every(Num) -> 1 }";
-  check_error "every needs a type" "every(x)";
+  check_error "every is not a pattern" "case x { every(Num) -> 1 }"
+    "Unexpected token 'every' at :1:10";
+  check_error "every needs a type" "every(x)"
+    "Unexpected token ')' at :1:8";
   check_file_error "law spec in a nested struct" "m: { spec `Ordering` is total {} }"
     "The spec '`Ordering` is total' at :1:6 is inside a nested struct; specs are allowed only at file level";
   check_file "comparison in a spec" "spec strings { ensure lexicographic ? \"bar\" < \"foo\" }"
@@ -241,9 +278,12 @@ let () =
     "Unexpected '<' at :1:6: a comparison names its ordering, as in 'ord ? a < b', and comparisons cannot be chained";
   check_file_error "comparisons do not chain" "x: ord ? a < b <= c"
     "Unexpected '<=' at :1:16: a comparison names its ordering, as in 'ord ? a <= b', and comparisons cannot be chained";
-  check_error "comparison is non-associative with ==" "ord ? a < b == 'true";
-  check_error "ordering needs a comparison" "ord ? a";
-  check_error "== is not a comparison under an ordering" "ord ? a == b";
+  check_error "comparison is non-associative with ==" "ord ? a < b == 'true"
+    "Unexpected token '==' at :1:13";
+  check_error "ordering needs a comparison" "ord ? a"
+    "Unexpected end of input at :1:8";
+  check_error "== is not a comparison under an ordering" "ord ? a == b"
+    "Unexpected token '==' at :1:9";
 
   (* Doubles (spec, section 11). *)
   check "double" "double { read_text(\"a.cfg\") << \"content\" }"
@@ -284,15 +324,44 @@ let () =
       Local ("fs", Double [{ stub_name = "read_text"; arguments = [Binder "p"];
                              responses = [Ident "p"] }]);
     ], Ident "fs"));
-  check_error "double needs a stub" "double {}";
-  check_error "stub needs a response" "double { f(1) }";
-  check_error "response needs an expression" "double { f(1) << }";
-  check_error "stub needs parentheses" "double { f << 1 }";
-  check_error "stubs need commas" "double { f(1) << 1 g(2) << 2 }";
-  check_error "no fields in a double" "double { f: 1 }";
-  check_error "stub arguments are patterns" "double { f(a + 1) << 1 }";
-  check_error "double is a keyword" "{ double = 1 }";
-  check_error "branches need commas" "case x { 'a -> 1 'b -> 2 }";
+  check_error "double needs a stub" "double {}"
+    "Unexpected token '}' at :1:9";
+  check_error "stub needs a response" "double { f(1) }"
+    "Unexpected token '}' at :1:15";
+  check_error "response needs an expression" "double { f(1) << }"
+    "Unexpected token '}' at :1:18";
+  check_error "stub needs parentheses" "double { f << 1 }"
+    "Unexpected token '<<' at :1:12";
+  check_error "stubs need commas" "double { f(1) << 1 g(2) << 2 }"
+    "Unexpected token 'g' at :1:20";
+  check_error "no fields in a double" "double { f: 1 }"
+    "Unexpected token ':' at :1:11";
+  check_error "stub arguments are patterns" "double { f(a + 1) << 1 }"
+    "Unexpected token '+' at :1:14";
+  check_error "double is a keyword" "{ double = 1 }"
+    "'double' at :1:3 is a keyword and cannot be used as a name";
+  (* A keyword where a name belongs (spec, section 3.8). *)
+  let check_keyword_error name src keyword position =
+    expect_error parse_expr name src
+      (Printf.sprintf "'%s' at %s is a keyword and cannot be used as a name" keyword position)
+  in
+  check_keyword_error "keyword as a local" "{ double = 1 }" "double" ":1:3";
+  check_keyword_error "keyword as a field" "{ case: 1 }" "case" ":1:3";
+  check_keyword_error "keyword as a punned field" "{ every, x }" "every" ":1:3";
+  check_keyword_error "keyword as a value" "{ x = do }" "do" ":1:7";
+  check_keyword_error "keyword as an argument" "f(some)" "some" ":1:3";
+  check_keyword_error "keyword as an operand" "1 + ensure" "ensure" ":1:5";
+  check_keyword_error "keyword as a projection" "a.case" "case" ":1:3";
+  check_keyword_error "keyword as a parameter" "(x, do) -> x" "do" ":1:5";
+  check_keyword_error "keyword as a lone parameter" "double -> 1" "double" ":1:1";
+  check_file_error "keyword as a file entry" "x: 1,\nsome = 2"
+    "'some' at :2:1 is a keyword and cannot be used as a name";
+  check_file_error "misplaced keyword is not a name" "x: 1 case"
+    "Unexpected token 'case' at :1:6";
+  check_file_error "keyword before a misplaced token" "x: case y 'a -> 1"
+    "Unexpected token ''a' at :1:11";
+  check_error "branches need commas" "case x { 'a -> 1 'b -> 2 }"
+    "Unexpected token ''b' at :1:18";
 
   check_file "spec" "spec it works { ensure f(1) == 2 }"
     (Record [Spec ([Title_text "it works"], [Ensure (Eq (Call (Ident "f", [Num "1"]), Num "2"))])]);
@@ -322,10 +391,20 @@ let () =
     "The spec 'inner' at :2:3 is inside a nested struct; specs are allowed only at file level";
   check_file_error "spec in a lambda body" "f: x -> { spec inner {}, <<x }"
     "The spec 'inner' at :1:11 is inside a nested struct; specs are allowed only at file level";
-  check_file_error "spec has no fields" "spec s { a: 1 }" "";
-  check_file_error "spec has no result" "spec s { <<1 }" "";
-  check_file_error "spec needs commas" "spec s { ensure a ensure b }" "";
-  check_error "spec is not an expression" "spec s {}";
+  check_file_error "spec has no fields" "spec s { a: 1 }"
+    "The field 'a' at :1:10 is in a spec: a spec body cannot have fields (use 'a = ...' for a local)";
+  check_file_error "spec has no punned fields" "spec s {\n  x = 1,\n  p.name,\n}"
+    "The field 'name' at :3:3 is in a spec: a spec body cannot have fields (use 'name = ...' for a local)";
+  check_file_error "spec has no result" "spec s { x = 1, <<x }"
+    "The '<<' at :1:17 is in a spec: a spec body has no result";
+  check_file_error "spec in a spec" "spec s { spec t {} }"
+    "The spec 't' at :1:10 is inside a nested struct; specs are allowed only at file level";
+  check_file_error "spec result must still be last" "spec s { <<1, x = 1 }"
+    "The '<<' at :1:10 is in a spec: a spec body has no result";
+  check_file_error "spec needs commas" "spec s { ensure a ensure b }"
+    "Unexpected token 'ensure' at :1:19";
+  check_error "spec is not an expression" "spec s {}"
+    "Unexpected token 'spec s' at :1:1";
 
   check "num literal" "42" (Num "42");
   check "string literal" {|"hello"|} (String "hello");
@@ -343,9 +422,12 @@ let () =
     (Add (Ident "x", Num "1"));
   check "parenthesised projection" "(x.y)"
     (Proj (Ident "x", "y"));
-  check_error "doubly parenthesised param" "((x)) -> x";
-  check_error "expression as param" "(x.y) -> x";
-  check_error "no tuples" "(x, y)";
+  check_error "doubly parenthesised param" "((x)) -> x"
+    "Unexpected token '->' at :1:7";
+  check_error "expression as param" "(x.y) -> x"
+    "Unexpected token '->' at :1:7";
+  check_error "no tuples" "(x, y)"
+    "Unexpected end of input at :1:7";
   check "lambda many args" "(x, y) -> x"
     (Lambda (["x"; "y"], Ident "x"));
   check "lambda trailing comma" "(x, y,) -> y"
@@ -363,6 +445,47 @@ let () =
     (Mod (Num "7", Num "3"));
   check "mod precedence" "1 + 7 % 3"
     (Add (Num "1", Mod (Num "7", Num "3")));
+  check "negative number" "-1" (Neg (Num "1"));
+  check "negative argument" "f(-1)" (Call (Ident "f", [Neg (Num "1")]));
+  check "negative list element" "[1, -1]" (List [Num "1"; Neg (Num "1")]);
+  check "negation binds tighter than times" "-2 * x"
+    (Mul (Neg (Num "2"), Ident "x"));
+  check "negation of a product operand" "x * -2"
+    (Mul (Ident "x", Neg (Num "2")));
+  check "negation binds looser than calls and projection" "-f(x).y"
+    (Neg (Proj (Call (Ident "f", [Ident "x"]), "y")));
+  check "subtracting a negation" "a - -b"
+    (Sub (Ident "a", Neg (Ident "b")));
+  check "binary minus without spaces" "a-1"
+    (Sub (Ident "a", Num "1"));
+  check "double negation" "--x" (Neg (Neg (Ident "x")));
+  check "negation then subtraction" "-a - b"
+    (Sub (Neg (Ident "a"), Ident "b"));
+  check "negation in an equality" "-x == y"
+    (Eq (Neg (Ident "x"), Ident "y"));
+  check "negated parenthesised sum" "-(a + b)"
+    (Neg (Add (Ident "a", Ident "b")));
+  check "negative lambda body" "x -> -x"
+    (Lambda (["x"], Neg (Ident "x")));
+  check "negative number patterns" "case n { -1 -> 'neg, 0 -> 'zero, - 2.5 -> 'odd, n -> 'pos }"
+    (Case (Ident "n", [
+      { pattern = Num_pattern "-1"; body = Label "neg" };
+      { pattern = Num_pattern "0"; body = Label "zero" };
+      { pattern = Num_pattern "-2.5"; body = Label "odd" };
+      { pattern = Binder "n"; body = Label "pos" };
+    ]));
+  check "negative number in a record pattern" "case p { { x: -1, .. } -> 1, other -> 0 }"
+    (Case (Ident "p", [
+      { pattern = Open_record_pattern [("x", Num_pattern "-1")]; body = Num "1" };
+      { pattern = Binder "other"; body = Num "0" };
+    ]));
+  check "negative stub argument" "double { f(-1) << -2 }"
+    (Double [{ stub_name = "f"; arguments = [Num_pattern "-1"];
+               responses = [Neg (Num "2")] }]);
+  check_error "minus in a pattern needs a number" "case n { -x -> 1 }"
+    "Unexpected token 'x' at :1:11";
+  check_error "no double minus in a pattern" "case n { --1 -> 1 }"
+    "Unexpected token '-' at :1:11";
   check "concat identifiers" "a ++ b"
     (Concat (Ident "a", Ident "b"));
   check "concat projections" "person.name ++ suffix"
@@ -401,8 +524,10 @@ let () =
   check "call in struct" "{ tmp = f(x), <<tmp + 1 }"
     (Block ([
       Local ("tmp", Call (Ident "f", [Ident "x"]))], Add (Ident "tmp", Num "1")));
-  check_error "call lone comma" "f(,)";
-  check_error "call missing close paren" "f(x";
+  check_error "call lone comma" "f(,)"
+    "Unexpected token ',' at :1:3";
+  check_error "call missing close paren" "f(x"
+    "Unexpected end of input at :1:4";
   check "equality" "x == 1"
     (Eq (Ident "x", Num "1"));
   check "equality binds looser than arithmetic" "a + 1 == b * 2"
@@ -422,8 +547,16 @@ let () =
     (Call (Ident "f", [Eq (Ident "a", Ident "b")]));
   check "equality in struct" "{ ok: x == y }"
     (Record [Field ("ok", Eq (Ident "x", Ident "y"))]);
-  check_error "equality is non-associative" "a == b == c";
-  check_error "equality missing right operand" "a ==";
+  check_error "equality is non-associative" "a == b == c"
+    "Unexpected token '==' at :1:8";
+  check_error "equality is non-associative in a lambda body" "x -> a == b == c"
+    "Unexpected token '==' at :1:13";
+  check_error "lambda is not an operand" "a + x -> x"
+    "Unexpected token '->' at :1:7";
+  check "parenthesised lambda as an operand" "a + (x -> x)"
+    (Add (Ident "a", Lambda (["x"], Ident "x")));
+  check_error "equality missing right operand" "a =="
+    "Unexpected end of input at :1:5";
   (* Newlines are not significant, so a parenthesised expression on the next
      line is an argument: here the lambda's body is the call x(1). *)
   check "newline before paren is a call" "x -> x\n(1)"
@@ -455,8 +588,10 @@ let () =
     (Some_val (Type_ref (["m"], "Bool")));
   check "some deeply qualified type" "some(a.b.Bool)"
     (Some_val (Type_ref (["a"; "b"], "Bool")));
-  check_error "type path ends with a type" "some(m.b)";
-  check_error "no types inside types" "some(M.Bool)";
+  check_error "type path ends with a type" "some(m.b)"
+    "Unexpected token ')' at :1:9";
+  check_error "no types inside types" "some(M.Bool)"
+    "Unexpected token '.' at :1:7";
   check "some type application" "some(Result(Int, String))"
     (Some_val (Type_apply ([], "Result", [
       Type_ref ([], "Int");
@@ -469,9 +604,12 @@ let () =
     ])));
   check "some deeply qualified type application" "some(a.b.Box(Num))"
     (Some_val (Type_apply (["a"; "b"], "Box", [Type_ref ([], "Num")])));
-  check_error "applied path ends with a type" "some(m.box(Num))";
-  check_error "no applied types inside types" "some(M.Box(Num))";
-  check_error "type application needs arguments" "some(m.Box())";
+  check_error "applied path ends with a type" "some(m.box(Num))"
+    "Unexpected token '(' at :1:11";
+  check_error "no applied types inside types" "some(M.Box(Num))"
+    "Unexpected token '.' at :1:7";
+  check_error "type application needs arguments" "some(m.Box())"
+    "Unexpected token ')' at :1:12";
   check "some record type" "some({ name: String, age: Int })"
     (Some_val (Type_record [
       ("name", Type_ref ([], "String"));
@@ -508,11 +646,16 @@ let () =
     ]));
   check "exact record keeps its trailing comma" "some({ a: Num, })"
     (Some_val (Type_record [("a", Type_ref ([], "Num"))]));
-  check_error "row must come last" "some({ .., a: Num })";
-  check_error "no comma after the row" "some({ a: Num, .., })";
-  check_error "one row only" "some({ a: Num, .., .. })";
-  check_error "row variable is a type name" "some({ a: Num, ..?r })";
-  check_error "row needs a comma before it" "some({ a: Num .. })";
+  check_error "row must come last" "some({ .., a: Num })"
+    "Unexpected token ',' at :1:10";
+  check_error "no comma after the row" "some({ a: Num, .., })"
+    "Unexpected token ',' at :1:18";
+  check_error "one row only" "some({ a: Num, .., .. })"
+    "Unexpected token ',' at :1:18";
+  check_error "row variable is a type name" "some({ a: Num, ..?r })"
+    "Unexpected token '?' at :1:18";
+  check_error "row needs a comma before it" "some({ a: Num .. })"
+    "Unexpected token '..' at :1:15";
   check "label type" "some('true)" (Some_val (Type_label "true"));
   check "label union" "some('lt | 'eq | 'gt)"
     (Some_val (Type_union [Type_label "lt"; Type_label "eq"; Type_label "gt"]));
@@ -567,10 +710,14 @@ let () =
       Type_field ("Bool", [], Type_union [Type_label "true"; Type_label "false"]);
       Type_local ("OrderingResult", [], Type_union [Type_label "lt"; Type_label "eq"; Type_label "gt"]);
     ]);
-  check_error "union needs a member after |" "some('a |)";
-  check_error "union needs a member before |" "some(| 'a)";
-  check_error "no double bar" "some('a || 'b)";
-  check_error "label type is not an expression type name" "some('A)";
+  check_error "union needs a member after |" "some('a |)"
+    "Unexpected token ')' at :1:10";
+  check_error "union needs a member before |" "some(| 'a)"
+    "Unexpected token '|' at :1:6";
+  check_error "no double bar" "some('a || 'b)"
+    "Unexpected token '|' at :1:10";
+  check_error "label type is not an expression type name" "some('A)"
+    "Unexpected character ''' at :1:6";
   check "list type" "some([Num])" (Some_val (Type_list (Type_ref ([], "Num"))));
   check "nested list type" "some([[?A]])" (Some_val (Type_list (Type_list (Type_var "A"))));
   check "list of records" "some([{ name: String }])"
@@ -609,11 +756,16 @@ let () =
     "The parenthesised types at :1:10 are not followed by '->': Duetto has no tuple types";
   check_file_error "no one-element tuple types" "x = some((Num,))"
     "The parenthesised types at :1:10 are not followed by '->': Duetto has no tuple types";
-  check_error "empty parentheses need an arrow" "some(())";
-  check_error "list type needs one element type" "some([Num, Num])";
-  check_error "list type is not empty" "some([])";
-  check_error "arrow needs a parameter list" "some(Num -> Num)";
-  check_error "arrow needs a result" "some((Num) ->)";
+  check_error "empty parentheses need an arrow" "some(())"
+    "Unexpected token ')' at :1:8";
+  check_error "list type needs one element type" "some([Num, Num])"
+    "Unexpected token ',' at :1:10";
+  check_error "list type is not empty" "some([])"
+    "Unexpected token ']' at :1:7";
+  check_error "arrow needs a parameter list" "some(Num -> Num)"
+    "Unexpected token '->' at :1:10";
+  check_error "arrow needs a result" "some((Num) ->)"
+    "Unexpected token ')' at :1:14";
   check "some type variable" "some(?A)" (Some_val (Type_var "A"));
   check "some multi-letter type variable" "some(?Key)" (Some_val (Type_var "Key"));
   check "type variable then bare use" "some({ first: ?A, second: A })"
@@ -623,9 +775,12 @@ let () =
     ]));
   check "type variable as an argument" "some(Result(?A, String))"
     (Some_val (Type_apply ([], "Result", [Type_var "A"; Type_ref ([], "String")])));
-  check_error "type variable needs a type name" "some(?a)";
-  check_error "no space after ?" "some(? A)";
-  check_error "type variable is not an expression" "?A";
+  check_error "type variable needs a type name" "some(?a)"
+    "Unexpected token '?' at :1:6";
+  check_error "no space after ?" "some(? A)"
+    "Unexpected token '?' at :1:6";
+  check_error "type variable is not an expression" "?A"
+    "Unexpected token '?A' at :1:1";
 
   check "empty struct" "{}" (Record []);
   check "punned name entry" "{ x }"
@@ -652,10 +807,14 @@ let () =
     (Record [
       Field ("c", Proj (Proj (Ident "a", "b"), "c"));
     ]);
-  check_error "punned path cannot go from type to value" "{ Mod.value }";
-  check_error "punned path cannot go back to values" "{ pkg.Type.value }";
-  check_error "no types inside types in punned paths" "{ Mod.Type }";
-  check_error "no types inside types after a value path" "{ pkg.Type.Ctor }";
+  check_error "punned path cannot go from type to value" "{ Mod.value }"
+    "Unexpected token '.' at :1:6";
+  check_error "punned path cannot go back to values" "{ pkg.Type.value }"
+    "Unexpected token '.' at :1:11";
+  check_error "no types inside types in punned paths" "{ Mod.Type }"
+    "Unexpected token '.' at :1:6";
+  check_error "no types inside types after a value path" "{ pkg.Type.Ctor }"
+    "Unexpected token '.' at :1:11";
 
   check "public type entry" "{ Num2: Num }"
     (Record [Type_field ("Num2", [], Type_ref ([], "Num"))]);
@@ -692,10 +851,14 @@ let () =
     (Block ([
       Type_local ("T", [], Type_ref ([], "Num"));
       Local ("x", Some_val (Type_ref ([], "T")))], Ident "x"));
-  check_error "type entry needs a type" "{ T: 1 }";
-  check_error "type params are type names" "{ Box(a): { value: a } }";
-  check_error "type params are not empty" "{ Box(): Num }";
-  check_error "value entry has no params" "{ f(x): 1 }";
+  check_error "type entry needs a type" "{ T: 1 }"
+    "Unexpected token '1' at :1:6";
+  check_error "type params are type names" "{ Box(a): { value: a } }"
+    "Unexpected token 'a' at :1:7";
+  check_error "type params are not empty" "{ Box(): Num }"
+    "Unexpected token ')' at :1:7";
+  check_error "value entry has no params" "{ f(x): 1 }"
+    "Unexpected token '(' at :1:4";
   check_file "type entries at file level" "Bool2: Num,\nBox(A) = { value: A },\nx: 1"
     (Record [
       Type_field ("Bool2", [], Type_ref ([], "Num"));
@@ -762,14 +925,33 @@ let () =
     (Record [
       Ensure (Eq (Call (Ident "f", [Ident "x"]), Record [Field ("ok", Num "1")]));
     ]);
-  check_error "ensure needs an expression" "{ ensure }";
-  check_error "ensure is not a name" "{ ensure: 1 }";
-  check_error "ensure takes one expression" "{ ensure x y }";
-  check_error "result must be last" "{ <<x, y = 1 }";
-  check_error "result must be last with fields" "{ a: 1, <<a, b: 2 }";
-  check_error "missing colon" "{ answer 42 }";
+  check_error "ensure needs an expression" "{ ensure }"
+    "'ensure' at :1:3 needs an expression";
+  expect_error parse_expr "ensure before a closing brace" "{ ensure }"
+    "'ensure' at :1:3 needs an expression";
+  expect_error parse_expr "ensure before a comma" "{ ensure, x: 1 }"
+    "'ensure' at :1:3 needs an expression";
+  expect_error parse_expr "do before a closing brace" "{ x = 1, do }"
+    "'do' at :1:10 needs an expression";
+  check_file_error "ensure at end of file" "x: 1,\nensure"
+    "'ensure' at :2:1 needs an expression";
+  expect_error parse_expr "ensure as a field is still a keyword" "{ ensure: 1 }"
+    "'ensure' at :1:3 is a keyword and cannot be used as a name";
+  expect_error parse_expr "do as a local is still a keyword" "{ do = 1, <<do }"
+    "'do' at :1:3 is a keyword and cannot be used as a name";
+  check_error "ensure is not a name" "{ ensure: 1 }"
+    "'ensure' at :1:3 is a keyword and cannot be used as a name";
+  check_error "ensure takes one expression" "{ ensure x y }"
+    "Unexpected token 'y' at :1:12";
+  check_error "result must be last" "{ <<x, y = 1 }"
+    "Unexpected token 'y' at :1:8";
+  check_error "result must be last with fields" "{ a: 1, <<a, b: 2 }"
+    "Unexpected token 'b' at :1:14";
+  check_error "missing colon" "{ answer 42 }"
+    "Unexpected token '42' at :1:10";
   check "list trailing comma" "[1, 2,]"
     (List [Num "1"; Num "2"]);
-  check_error "type fields require lowercase names" "some({ Name: Int })";
+  check_error "type fields require lowercase names" "some({ Name: Int })"
+    "Unexpected token 'Name' at :1:8";
 
   if !failures > 0 then exit 1 else print_endline "parser tests passed"

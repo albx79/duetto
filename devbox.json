@@ -28,7 +28,9 @@
   "shell": {
     "init_hook": ["echo 'Welcome to devbox!' > /dev/null"],
     "scripts": {
-      "test":   ["echo \"Error: no test specified\" && exit 1"],
+      "test":   ["opam exec -- dune test"],
+      "build":   ["opam exec -- dune build"],
+      "duetto":   ["opam exec -- dune exec duetto"],
       "claude": "set -eu; AGENT_HOME=\"$HOME/.local/share/agent-sandbox\"; mkdir -p \"$AGENT_HOME\"; chmod 700 \"$AGENT_HOME\"; exec bwrap --unshare-all --share-net --die-with-parent --new-session --bind \"$PWD\" \"$PWD\" --ro-bind /nix/store /nix/store --ro-bind \"$PWD/.devbox/nix/profile/default\" /nix-profile --dir /home --dir /home/agent --bind \"$AGENT_HOME\" /home/agent --dir /bin --symlink /nix-profile/bin/bash /bin/sh --dir /etc --ro-bind /etc/resolv.conf /etc/resolv.conf --ro-bind /etc/hosts /etc/hosts --ro-bind /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt --setenv SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt --setenv NODE_EXTRA_CA_CERTS /etc/ssl/certs/ca-certificates.crt --setenv OPAM_SWITCH_PREFIX \"$PWD/_opam\" --setenv OCAMLPATH \"$PWD/_opam/lib\" --setenv CAML_LD_LIBRARY_PATH \"$PWD/_opam/lib/stublibs:$PWD/_opam/lib/ocaml/stublibs:$PWD/_opam/lib/ocaml\" --setenv OCAML_TOPLEVEL_PATH \"$PWD/_opam/lib/toplevel\" --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run --chdir \"$PWD\" --setenv HOME /home/agent --setenv TMPDIR /tmp --setenv PATH \"$PWD/_opam/bin:/nix-profile/bin\" claude"
     }
   }

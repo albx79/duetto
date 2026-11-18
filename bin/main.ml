@@ -90,6 +90,10 @@ let rec eval (expr : A.expr) =
       (match List.find_opt (fun (b : A.case_branch) -> matches b.pattern value) branches with
       | Some branch -> eval branch.body
       | None -> failwith "case: no branch matches the value")
+  | A.Neg e ->
+      (match eval e with
+      | Atom n -> Atom (- n)
+      | _ -> failwith "can only negate atoms")
   | A.Add (a, b) ->
       (match (eval a, eval b) with
       | (Atom a, Atom b) -> Atom (a + b)
@@ -118,14 +122,14 @@ and eval_field (entry : A.struct_entry) =
   (* Types exist only at compile time (spec, section 3.8). *)
   | A.Type_field _ | A.Type_local _ -> None
   | A.Ensure e ->
-      let pos = entry.loc.start_pos in
+      let pos = Duetto.Position.to_string entry.loc.start_pos in
       (match eval e with
       | Label "true" -> None
       | Label "false" ->
-          failwith (Printf.sprintf "ensure failed at %d:%d" pos.line pos.column)
+          failwith (Printf.sprintf "ensure failed at %s" pos)
       | _ ->
           failwith (Printf.sprintf
-            "ensure at %d:%d needs a true or false condition" pos.line pos.column))
+            "ensure at %s needs a true or false condition" pos))
   | A.Do _ ->
       failwith "Do entries are not supported"
   | A.Spec (segments, body) ->

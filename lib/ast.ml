@@ -1,31 +1,14 @@
-type position = {
-  line : int;
-  column : int;
-}
-[@@deriving show]
-
 type location = {
-  start_pos : position;
-  end_pos : position;
+  start_pos : Position.t;
+  end_pos : Position.t;
 }
 [@@deriving show]
-
-let position_of_lexing (pos : Lexing.position) : position = {
-  line = pos.pos_lnum;
-  column = pos.pos_cnum - pos.pos_bol + 1;
-}
 
 let location_of_lexing_positions (start_pos : Lexing.position) (end_pos : Lexing.position)
   : location =
   {
-    start_pos = position_of_lexing start_pos;
-    end_pos = position_of_lexing end_pos;
-  }
-
-let dummy_location =
-  {
-    start_pos = { line = 0; column = 0 };
-    end_pos = { line = 0; column = 0 };
+    start_pos = Position.of_lexing start_pos;
+    end_pos = Position.of_lexing end_pos;
   }
 
 type 'a located = {
@@ -125,6 +108,7 @@ module Make (W : WRAP) = struct
   and pattern = pattern_node wrapped
   and pattern_node =
     | Label_pattern of string
+    (* A number literal, with a leading "-" when the pattern is negative. *)
     | Num_pattern of string
     | String_pattern of string
     (* x: matches anything and binds it. *)
@@ -171,6 +155,8 @@ module Make (W : WRAP) = struct
     | Eq of expr * expr
     (* ord ? a < b (spec, section 6.2): ordering, operator, operands. *)
     | Compare of expr * comparison * expr * expr
+    (* -e. Number literals are never negative: -1 is Neg (Num "1"). *)
+    | Neg of expr
     | Add of expr * expr
     | Sub of expr * expr
     | Mul of expr * expr

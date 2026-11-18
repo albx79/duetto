@@ -1,5 +1,16 @@
-(tests
- (names test_lexer test_parser)
+(test
+ (name test_lexer)
+ (modules test_lexer)
+ (libraries duetto))
+
+; The files that must parse are passed as arguments: the glob is evaluated
+; on the source tree, so a deleted file is not checked from a stale copy
+; left in _build.
+(test
+ (name test_parser)
+ (modules test_parser)
  (deps
   (glob_files duetto/*.duetto))
+ (action
+  (run %{test} %{deps}))
  (libraries duetto))

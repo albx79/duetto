@@ -70,6 +70,8 @@ spec the answer is 42 {
 
 Entries are separated by commas, and a trailing comma is allowed. Newlines and indentation are not significant.
 
+Source files are UTF-8. Non-ASCII characters may appear only in strings, comments and spec titles, and positions in diagnostics count characters, not bytes.
+
 ### 3.2 Entries
 
 This grammar is descriptive, not formal. Operator precedence and associativity are those of the reference parser (`lib/parser.mly`).
@@ -146,7 +148,7 @@ map = (xs, f) -> ...,
 answer = () -> 42,
 ```
 
-There is no separate function-definition form. A lambda body extends as far right as possible, ending at a comma, a closing bracket, or the end of its entry. A longer body is a block: `x -> { ..., <<result }`.
+There is no separate function-definition form. A lambda body extends as far right as possible, ending at a comma, a closing bracket, or the end of its entry. A longer body is a block: `x -> { ..., <<result }`. A lambda is not an operand, so `a + x -> x` is an error, and an operand that is a lambda is written in parentheses, as in `a + (x -> x)`.
 
 ### 3.5 Scoping and recursion
 
@@ -189,6 +191,7 @@ f_res is used before it is initialized:
 A spec entry is `spec`, a title, and a struct. The title is part of the grammar, not a string literal, so it is never an expression: no `++`, no constants. It is free text up to the opening `{`, under these rules (decided):
 
 - It may contain any character except `{` and `}`. A `}` in a title is an error, which also catches a title whose `{` is missing. Backticks mark the interfaces of a law spec (section 10.9): a **mark** is a type name, optionally after a value path, as in `` `Ordering` `` or `` `m.Ordering` ``, and anything else between backticks, or a backtick that is not closed, is an error.
+- It cannot start with `=` or `:`. `spec` is a keyword, so `spec = 1`, `spec: 1` and `f(spec)` are errors that report `spec` used as a name.
 - `#` in a title is text, not the start of a comment.
 - Brackets need not balance, so a title can describe a half-open range such as `[0, 1)`. Tools should treat a title's text as text, as they treat strings and comments, and its marks as names.
 - Titles are shown as written, marks in backticks, in reports and errors.
@@ -215,6 +218,7 @@ Pair = { first: Num, second: Num },                  # private type
 - Parameters at the head of an entry, as in `Ordering(A): ...`, can only mean a type constructor, since values have no `name(params)` form.
 - Punning works for types: `{ Bool }` and `{ m.Bool }` re-export a type from elsewhere.
 - **Naming.** Value names, including field names and labels after the `'`, are snake_case: a lowercase letter or `_`, then lowercase letters, digits and `_`, as in `read_file` and `'not_found`. Type names are PascalCase: an uppercase letter, then letters and digits, with no `_`, as in `OrderingResult`. Other spellings, such as `readFile` or `Ordering_Result`, are lexical errors.
+- **Keywords.** `case`, `do`, `double`, `ensure`, `every`, `some` and `spec` are reserved and cannot be value names, including field names, locals, parameters and projections. Using one as a name is reported as such, rather than as an unexpected token. Labels are not affected: `'case` is a valid label.
 
 **Type members are transparent and static.** Because a file is a struct and structs are first-class records, public types are members of a record type. For now they are transparent aliases: `m.Bool` is another name for `'true | 'false`, so no dependent typing is needed. Type members exist only at compile time and do not take part in a record's runtime value, its exactness, or `==`. Abstract types, where a type member would become genuinely dependent, are deferred (section 13.2).
 
@@ -222,7 +226,7 @@ Pair = { first: Num, second: Num },                  # private type
 
 ### 4.1 Core type forms
 
-- `Num` and `String`. `Num` is the only number type: an **exact rational number** of any size, as in Scheme, Common Lisp, Julia's `Rational` or Haskell's `Rational`. Arithmetic never rounds and never overflows, so `(1 / 3) * 3 == 1`. Number literals are decimal, with an optional fractional part and exponent, as in `42`, `3.14`, `15e-3` and `2E6`; a literal denotes the exact value it writes, and an exponent implies nothing about floating point. Examples in this draft use whole numbers.
+- `Num` and `String`. `Num` is the only number type: an **exact rational number** of any size, as in Scheme, Common Lisp, Julia's `Rational` or Haskell's `Rational`. Arithmetic never rounds and never overflows, so `(1 / 3) * 3 == 1`. Number literals are decimal, with an optional fractional part and exponent, as in `42`, `3.14`, `15e-3` and `2E6`; a literal denotes the exact value it writes, and an exponent implies nothing about floating point. Literals are never negative: unary `-` negates any expression, as in `-1`, `f(-x)` or `-p.age`. It binds tighter than `*`, `/` and `%`, so `-2 * x` is `(-2) * x`, and looser than calls and projection, so `-p.age` is `-(p.age)`. Examples in this draft use whole numbers.
 - label singleton types such as `'true`, `'lt`, `'missing`
 - unions of labels, such as `'lt | 'eq | 'gt`
 - list types `[T]`
@@ -396,7 +400,7 @@ ensure by_age ? ada <= bob,
 
 - **It is sugar for a call**: `ord ? a < b` means `case ord.compare(a, b) { 'lt -> 'true, 'eq -> 'false, 'gt -> 'false }`, and its type is `'true | 'false`. Any value with a field `compare: (A, A) -> 'lt | 'eq | 'gt` can be the ordering, matched by structure, so this is ordinary closure dispatch, not dispatch on types.
 - **`~~` is not `==`.** `==` is structural equality, while `~~` is equivalence under an ordering, which can be coarser: a case-insensitive ordering makes `"a"` and `"A"` equivalent but not equal. A distinct symbol keeps the two apart; `~~` was chosen over `=` alone, which would also mean binding, and over a reversed spaceship `>=<`, which would need explaining.
-- **Precedence.** The ordering is a primary expression, such as `by_age`, `people.by_name` or `by(key)`. The operands bind as arithmetic does, so `ord ? x + 1 < y` compares `x + 1` with `y`. A comparison is non-associative, at the level of `==`.
+- **Precedence.** The ordering is a primary expression, such as `by_age`, `people.by_name`, `by(key)` or a parenthesised expression. The operands bind as arithmetic does, so `ord ? x + 1 < y` compares `x + 1` with `y`. A comparison is non-associative, at the level of `==`: neither can be an operand of the other or of an arithmetic operator, so `a + ord ? x < y`, `x == ord ? a < b` and `ord ? a == b < c` are errors, and parentheses are needed, as in `a + (ord ? x < y)`.
 - **The comparison operators exist only after `?`.** A bare `a < b` is an error that says to name an ordering, as in `ord ? a < b`.
 - **Chained comparisons**, such as `ord ? lo <= x < hi`, are not part of the form for now (section 13.1).
 
@@ -565,7 +569,7 @@ A **struct union** is a union of exact records with distinct field sets, possibl
 
 ```duetto
 Expr: { num: Num } | { add: { l: Expr, r: Expr } },
-Option(A): 'none | { some: A },
+Option(A): 'none | { value: A },
 Result(A, E): { ok: A } | { err: E },
 
 eval = e -> case e {
@@ -584,7 +588,7 @@ eval = e -> case e {
 
 **Patterns (decided).** `case` branches and the stubs of a double (section 11) use **one pattern language**. A stub is a `case` branch over a function's argument list. The forms are:
 
-- **Literals**: labels, numbers and strings, matched with `==`, as in `'lt` or `"settings.json"`.
+- **Literals**: labels, numbers and strings, matched with `==`, as in `'lt` or `"settings.json"`. A number pattern may be negative, as in `-1`; since patterns are not expressions, `-` is allowed only directly before a number.
 - **Binders**: a bare name, such as `path` or `other`, matches any value and binds it in the branch's body or the stub's responses.
 - **Pinned values**: `^name` matches the value of a name already in scope, compared with `==`, as in `read_text(^config_path)`. Without the `^`, the name would be a new binder that shadows the local. The sigil `^` is provisional.
 - **Typed wildcards**: `some(T)` matches every value of `T` and binds nothing. It is how a pattern states a type, which matters for doubles (section 11).

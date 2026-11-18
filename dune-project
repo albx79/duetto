@@ -13,9 +13,9 @@
 
 (maintainers "Albx <albx79>")
 
-(license LICENSE)
+(license Apache-2.0)
 
-(documentation https://url/to/documentation)
+(documentation https://github.com/albx79/duetto/blob/master/SPEC.md)
 
 (package
  (name duetto)
@@ -27,6 +27,6 @@
   menhirLib
   ppx_deriving)
  (tags
-  ("add topics" "to describe" your project)))
+  (functional "programming language" spec duetto)))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
