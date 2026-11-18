@@ -21,7 +21,11 @@
  (name duetto)
  (synopsis "spec and production in two voices")
  (description "An experimental programming language where specs define interfaces and check their conformance.")
- (depends ocaml)
+ (depends
+  ocaml
+  (menhir :build)
+  menhirLib
+  ppx_deriving)
  (tags
   ("add topics" "to describe" your project)))
 

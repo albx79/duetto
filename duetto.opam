@@ -13,6 +13,9 @@ bug-reports: "https://github.com/albx79/duetto/issues"
 depends: [
   "dune" {>= "3.23"}
   "ocaml"
+  "menhir" {build}
+  "menhirLib"
+  "ppx_deriving"
   "odoc" {with-doc}
 ]
 build: [
