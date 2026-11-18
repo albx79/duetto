@@ -34,3 +34,5 @@ _build/
 
 # opam local switch
 _opam/
+editors/zed/grammars
+env
