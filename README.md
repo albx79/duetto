@@ -13,8 +13,8 @@ example values for other specs to reuse.
 Duetto is a whole-program language with exact structural records, labels,
 struct unions and no type-directed dispatch. The design is in two documents:
 
-- [`SPEC.md`](SPEC.md), the design draft, which covers the whole language;
-- [`Duetto Formal Core.md`](Duetto%20Formal%20Core.md), the formal rules for
+- [`SPEC.md`](doc/SPEC.md), the design draft, which covers the whole language;
+- [`FormalCore.md`](doc/FormalCore.md), the formal rules for
   the core fragment: typing, signature extraction and checking. Where the two
   overlap, the formal core is authoritative.
 

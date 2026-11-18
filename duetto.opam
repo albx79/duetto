@@ -5,17 +5,17 @@ description:
   "An experimental programming language where specs define interfaces and check their conformance."
 maintainer: ["Albx <albx79>"]
 authors: ["Albx <albx79>"]
-license: "LICENSE"
-tags: ["add topics" "to describe" "your" "project"]
+license: "Apache-2.0"
+tags: ["functional" "programming language" "spec" "duetto"]
 homepage: "https://github.com/albx79/duetto"
-doc: "https://url/to/documentation"
+doc: "https://github.com/albx79/duetto/blob/master/doc/SPEC.md"
 bug-reports: "https://github.com/albx79/duetto/issues"
 depends: [
   "dune" {>= "3.23"}
-  "ocaml"
-  "menhir" {build}
-  "menhirLib"
-  "ppx_deriving"
+  "ocaml" {>= "4.14"}
+  "menhir" {build & >= "20260209"}
+  "menhirLib" {>= "20260209"}
+  "ppx_deriving" {>= "6.2"}
   "odoc" {with-doc}
 ]
 build: [

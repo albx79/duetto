@@ -15,17 +15,25 @@
 
 (license Apache-2.0)
 
-(documentation https://github.com/albx79/duetto/blob/master/SPEC.md)
+(documentation https://github.com/albx79/duetto/blob/master/doc/SPEC.md)
 
 (package
  (name duetto)
  (synopsis "spec and production in two voices")
  (description "An experimental programming language where specs define interfaces and check their conformance.")
  (depends
-  ocaml
-  (menhir :build)
-  menhirLib
-  ppx_deriving)
+  (ocaml
+   (>= 4.14))
+  ; menhir's own package requires menhirLib {= version}, and the generated
+  ; parser checks it (MenhirLib.StaticVersion), so the two always match.
+  (menhir
+   (and
+    :build
+    (>= 20260209)))
+  (menhirLib
+   (>= 20260209))
+  (ppx_deriving
+   (>= 6.2)))
  (tags
   (functional "programming language" spec duetto)))
 
