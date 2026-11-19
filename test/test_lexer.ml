@@ -197,6 +197,14 @@ let () =
     "The byte 0x80 at :1:1 is not valid UTF-8 (source files must be UTF-8)";
   check_error "truncated UTF-8 sequence" "x\xc3"
     "The byte 0xC3 at :1:2 is not valid UTF-8 (source files must be UTF-8)";
+  check_error "invalid UTF-8 in a comment" "# café \xff"
+    "The byte 0xFF at :1:8 is not valid UTF-8 (source files must be UTF-8)";
+  check_error "surrogate in a string" "\"é\xed\xa0\x80\""
+    "The byte 0xED at :1:3 is not valid UTF-8 (source files must be UTF-8)";
+  check_error "invalid UTF-8 in a multiline title" "spec café\nü\xe0\x80\x80 {}"
+    "The byte 0xE0 at :2:2 is not valid UTF-8 (source files must be UTF-8)";
+  check_error "code point above the Unicode range" "\xf4\x90\x80\x80"
+    "The byte 0xF4 at :1:1 is not valid UTF-8 (source files must be UTF-8)";
   check_error "control character" "\x01"
     "Unexpected character '\\x01' at :1:1";
   check_error "non-ASCII invalid escape" "\"\\é\""

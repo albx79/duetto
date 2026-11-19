@@ -17,8 +17,9 @@ const PREC = {
   compare: 2,
   add: 3,
   mul: 4,
-  ordering: 5,
-  postfix: 6,
+  unary: 5,
+  ordering: 6,
+  postfix: 7,
 };
 
 // In types, | binds tighter than ->: (A) -> B | C is (A) -> (B | C).
@@ -139,6 +140,7 @@ module.exports = grammar({
       $.every,
       $.lambda,
       $.binary_expression,
+      $.unary_expression,
       $.comparison,
       $.call,
       $.projection,
@@ -170,6 +172,10 @@ module.exports = grammar({
           field('operator', operator),
           field('right', $._expression)))),
     ),
+
+    unary_expression: $ => prec(PREC.unary, seq(
+      field('operator', '-'),
+      field('operand', $._expression))),
 
     // ord ? a < b (spec, section 6.2).
     comparison: $ => prec.left(PREC.compare, seq(
@@ -226,12 +232,15 @@ module.exports = grammar({
     _pattern: $ => choice(
       $.label,
       $.number,
+      $.negative_number_pattern,
       $.string,
       $.identifier,
       $.pinned,
       $.some_pattern,
       $.record_pattern,
     ),
+
+    negative_number_pattern: $ => seq('-', $.number),
 
     pinned: $ => seq('^', field('name', $.identifier)),
 

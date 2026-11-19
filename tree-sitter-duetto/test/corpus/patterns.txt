@@ -94,3 +94,26 @@ a: case x { 0 -> 1, "s" -> 2, ^expected -> 3, some(Num) -> 4, other -> 5 },
       (case_branch
         (identifier)
         (number)))))
+============================================================
+Negative numeric patterns
+============================================================
+
+negative: case n { -1 -> 'negative, other -> 'other },
+stub: double { f(- 1.5) << -2 },
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (case
+      (identifier)
+      (case_branch (negative_number_pattern (number)) (label))
+      (case_branch (identifier) (label))))
+  (field
+    (identifier)
+    (double
+      (stub
+        (identifier)
+        (negative_number_pattern (number))
+        (unary_expression (number))))))

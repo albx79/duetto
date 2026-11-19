@@ -1,0 +1,2 @@
+; Zed clones the Duetto repository here when building its grammar.
+(dirs :standard \ grammars)

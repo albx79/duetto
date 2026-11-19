@@ -37,6 +37,23 @@ let position_in_lexeme lexbuf offset =
 
 let error e = raise (Diagnostic.Error e)
 
+let invalid_utf8 lexbuf text i =
+  error (Diagnostic.Invalid_utf8 {
+    byte = Char.code text.[i];
+    position = position_in_lexeme lexbuf i;
+  })
+
+let validate_utf8 lexbuf =
+  let text = Lexing.lexeme lexbuf in
+  let rec scan i =
+    if i < String.length text then begin
+      let decoded = String.get_utf_8_uchar text i in
+      if not (Uchar.utf_decode_is_valid decoded) then invalid_utf8 lexbuf text i;
+      scan (i + Uchar.utf_decode_length decoded)
+    end
+  in
+  scan 0
+
 let keyword_as_name lexbuf keyword =
   error (Diagnostic.Keyword_as_name {
     keyword;
@@ -228,8 +245,10 @@ let whitespace = [' ' '\t' '\r']+
 let utf8_continuation = ['\x80'-'\xbf']
 let utf8_multibyte =
     ['\xc2'-'\xdf'] utf8_continuation
-  | ['\xe0'-'\xef'] utf8_continuation utf8_continuation
-  | ['\xf0'-'\xf4'] utf8_continuation utf8_continuation utf8_continuation
+  | ('\xe0' ['\xa0'-'\xbf'] | ['\xe1'-'\xec' '\xee'-'\xef'] utf8_continuation
+    | '\xed' ['\x80'-'\x9f']) utf8_continuation
+  | ('\xf0' ['\x90'-'\xbf'] | ['\xf1'-'\xf3'] utf8_continuation
+    | '\xf4' ['\x80'-'\x8f']) utf8_continuation utf8_continuation
 
 rule token = parse
   | whitespace { token lexbuf }
@@ -248,13 +267,14 @@ rule token = parse
           position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
         })
       }
-  | "#" [^ '\n']* { account_for lexbuf; token lexbuf }
+  | "#" [^ '\n']* { validate_utf8 lexbuf; account_for lexbuf; token lexbuf }
 
   (* A spec title is free text up to the opening brace (spec, section 3.6).
      A title never starts with "=" or ":", so "spec = 1" and "spec : 1"
      use spec as a name. This is checked first, because the title would run
      on to the next "{" and fail with a confusing error, or none. *)
   | "spec" ([' ' '\t' '\r' '\n'] [^ '{']* as title) {
+      validate_utf8 lexbuf;
       if starts_like_a_binding title then keyword_as_name lexbuf "spec";
       let title = spec_title lexbuf 4 title in
       account_for lexbuf;
@@ -365,6 +385,7 @@ and string buf start = parse
   | "\\n" { Buffer.add_char buf '\n'; string buf start lexbuf }
   | "\\t" { Buffer.add_char buf '\t'; string buf start lexbuf }
   | '\\' ((utf8_multibyte | _) as c) {
+      validate_utf8 lexbuf;
       error (Diagnostic.Invalid_escape {
         sequence = "\\" ^ c;
         position = Position.of_lexing (Lexing.lexeme_start_p lexbuf);
@@ -374,6 +395,7 @@ and string buf start = parse
       error (Diagnostic.Unterminated_string { position = Position.of_lexing start })
     }
   | [^ '"' '\\' '\n']+ as s {
+      validate_utf8 lexbuf;
       account_for lexbuf;
       Buffer.add_string buf s;
       string buf start lexbuf

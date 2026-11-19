@@ -189,6 +189,38 @@ d: m.f(),
       (arguments))))
 
 ============================================================
+Unary minus
+============================================================
+
+argument: f(-1),
+product: -2 * x,
+projection: -p.age,
+call: -f(x),
+
+---
+
+(source_file
+  (field
+    (identifier)
+    (call
+      (identifier)
+      (arguments
+        (unary_expression (number)))))
+  (field
+    (identifier)
+    (binary_expression
+      (unary_expression (number))
+      (identifier)))
+  (field
+    (identifier)
+    (unary_expression
+      (projection (identifier) (identifier))))
+  (field
+    (identifier)
+    (unary_expression
+      (call (identifier) (arguments (identifier))))))
+
+============================================================
 Comparisons under an ordering
 ============================================================
 
