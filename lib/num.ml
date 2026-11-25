@@ -50,5 +50,7 @@ let rem a b = sub a (mul b (floor (div a b)))
 
 let to_string value = Printf.sprintf "%s/%s" (Z.to_string value.num) (Z.to_string value.den)
 
-let of_string_opt s = failwith "TODO"
-let of_string s = of_string_opt s
+let of_string_opt s = int_of_string_opt s |> Option.map (fun i -> of_ints i 1)
+let of_string s = match of_string_opt s with 
+  | Some n -> n
+  | None -> failwith ("Invalid number " ^ s)

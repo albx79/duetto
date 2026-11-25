@@ -15,7 +15,11 @@ let check_opt name actual expected =
   | (None, None) -> ()
   | (a, e) -> begin
   incr failures;
-  Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name (Option.to_string expected) (Option.to_string actual)
+  Printf.printf 
+    "FAIL %s\n  expected: %s\n  actual:   %s\n" 
+    name 
+    (Option.value expected ~default:"<None>")
+    (actual |> Option.map N.to_string |> Option.value ~default:"<None>") 
   end
   
 
@@ -87,6 +91,6 @@ let () =
   check "infty % 2" (N.rem (q 1 0) (q 2 1)) "0/0";
   check "7 % infty" (N.rem (q 7 1) (q 1 0)) "0/0";
 
-  (* check_opt "parse 42" (N.of_string_opt "42") ; *)
+  check_opt "parse 42" (N.of_string_opt "42") (Some "42/1");
     
   if !failures > 0 then exit 1 else print_endline "num tests passed"
