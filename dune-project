@@ -33,7 +33,10 @@
   (menhirLib
    (>= 20260209))
   (ppx_deriving
-   (>= 6.2)))
+   (>= 6.2))
+  (zarith
+   (>= 1.14))
+ )
  (tags
   (functional "programming language" spec duetto)))
 

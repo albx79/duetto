@@ -1,6 +1,6 @@
 (library
  (name duetto)
- (libraries menhirLib)
+ (libraries menhirLib zarith)
  (preprocess
    (pps ppx_deriving.show)))
 
