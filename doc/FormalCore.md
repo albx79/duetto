@@ -74,6 +74,8 @@ e ::= n | s | 'a                -- Num, String, label literals
 
 Built-in operators such as `+`, `++` and `length` are constants with fixed types in the initial environment `Γ₀`, for example `+ : (Num, Num) -> Num`, `++ : (String, String) -> String` and `length : ∀X. ([X]) -> Num`. Each operator has exactly one type: there is no overloading, since resolving an overload would be type-directed dispatch (design draft, section 6.2). String concatenation is therefore `++`, not `+`.
 
+The arithmetic operators `+`, `-`, `*`, `/` and `%` all have type `(Num, Num) -> Num`, and unary minus has type `(Num) -> Num`. They are total: `Num` includes infinity and bottom, which division by zero produces, and `%` is the floored remainder (design draft, section 4.1). The core therefore needs no failure rule for arithmetic.
+
 ### 2.3 Structs and specs
 
 ```text
@@ -501,7 +503,7 @@ In usage types, a label position is written as its bounds: `(L⁻, L⁺)`, with 
 | A12 | In one spec: `ensure same(1, 1) == 'true`, `ensure same(1, 2) == 'false`; implementation `(a, b) -> a == b` | `(Num, Num) -> ({'true}, ⊤)`, `(Num, Num) -> ({'false}, ⊤)` | `same : (Num, Num) -> 'true \| 'false`; the implementation is accepted |
 | A13 | `c = mk()`, `ensure c.compare(1, 1) == 'eq`, `ensure c.compare(1, 2) == 'lt`; implementation `() -> { compare: (a, b) -> case a == b { 'true -> 'eq, 'false -> 'lt } }` | `() -> { compare: (Num, Num) -> ({'eq, 'lt}, ⊤) \| ρ̂ }` | `mk : () -> { compare: (Num, Num) -> 'eq \| 'lt }`; the implementation is accepted |
 | A14 | Spec P: `ensure load_settings("p").theme == "dark"`; spec Q: `ensure load_settings("q") == { theme: "light", size: 12 }`; implementation `n -> case n == "p" { 'true -> { theme: "dark", size: 10 }, 'false -> { theme: "light", size: 12 } }` | P: `(String) -> { theme: String \| ρ̂ }`; Q: `(String) -> { theme: String, size: Num \| ∅ }` | `load_settings : (String) -> { theme: String, size: Num }`; the implementation is accepted |
-| A15 | In one spec: `ensure divmod(7, 2).div == 3` and `ensure divmod(7, 2).mod == 1`; implementation `(a, b) -> { div: a / b, mod: a % b }` | `(Num, Num) -> { div: Num \| ρ̂1 }` and `(Num, Num) -> { mod: Num \| ρ̂2 }` | `divmod : (Num, Num) -> { div: Num, mod: Num }`; the implementation is accepted |
+| A15 | In one spec: `ensure intdivmod(7, 2).div == 3` and `ensure intdivmod(7, 2).mod == 1`; implementation `(a, b) -> { div: (a - a % b) / b, mod: a % b }` | `(Num, Num) -> { div: Num \| ρ̂1 }` and `(Num, Num) -> { mod: Num \| ρ̂2 }` | `intdivmod : (Num, Num) -> { div: Num, mod: Num }`; the implementation is accepted |
 
 Notes:
 
@@ -548,7 +550,7 @@ Notes:
 | R24 | Spec P: `ensure f(1) == { ok: 1 }`; spec Q: `ensure f(0) == { err: "zero" }` | Extraction | Two exact uses at a result with different field sets. They conflict, and still do with struct unions, since no one spec observes both shapes (section 9.3, case U3) |
 | R25 | In one spec: `ensure load_settings("p").size == 1`, `ensure load_settings("q").size == "big"` | Extraction | The joined field `size` has the types `Num` and `String` in two uses, which do not unify |
 | R26 | Spec P: `ensure f('true) == 1`; spec Q: `ensure f('false) == 0` | Extraction | Neither spec's set includes the other's: "spec P passes `'true` and spec Q passes `'false` to `f`; one spec must pass both, or use `some('true \| 'false)`" |
-| R27 | Spec P: `ensure divmod(7, 2).div == 3`; spec Q: `ensure divmod(7, 2).mod == 1` | Extraction | Neither spec's fields include the other's: "spec P observes `div` and spec Q observes `mod`; one spec must observe both" |
+| R27 | Spec P: `ensure intdivmod(7, 2).div == 3`; spec Q: `ensure intdivmod(7, 2).mod == 1` | Extraction | Neither spec's fields include the other's: "spec P observes `div` and spec Q observes `mod`; one spec must observe both" |
 | R28 | Spec P: `ensure same(1, 1) == 'true`; spec Q: `ensure same(1, 2) == 'false` | Extraction | "spec P observes `'true` and spec Q observes `'false` at the result of `same`; one spec must observe both" |
 
 ## 9. Simplifications and open points

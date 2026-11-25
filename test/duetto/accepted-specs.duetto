@@ -77,8 +77,8 @@ spec A14 Q {
 },
 
 spec A15 {
-    ensure divmod(7, 2).div == 3,
-    ensure divmod(7, 2).mod == 1,
+    ensure intdivmod(7, 2).div == 3,
+    ensure intdivmod(7, 2).mod == 1,
 },
 
 spec U1 {

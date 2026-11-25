@@ -226,7 +226,7 @@ Pair = { first: Num, second: Num },                  # private type
 
 ### 4.1 Core type forms
 
-- `Num` and `String`. `Num` is the only number type: an **exact rational number** of any size, as in Scheme, Common Lisp, Julia's `Rational` or Haskell's `Rational`. Arithmetic never rounds and never overflows, so `(1 / 3) * 3 == 1`. Number literals are decimal, with an optional fractional part and exponent, as in `42`, `3.14`, `15e-3` and `2E6`; a literal denotes the exact value it writes, and an exponent implies nothing about floating point. Literals are never negative: unary `-` negates any expression, as in `-1`, `f(-x)` or `-p.age`. It binds tighter than `*`, `/` and `%`, so `-2 * x` is `(-2) * x`, and looser than calls and projection, so `-p.age` is `-(p.age)`. Examples in this draft use whole numbers.
+- `Num` and `String`. `Num` is the only number type: an **exact rational number** of any size, as in Scheme, Common Lisp, Julia's `Rational` or Haskell's `Rational`, plus two values for division by zero. Arithmetic never rounds, never overflows and never fails, so `(1 / 3) * 3 == 1` (see *Arithmetic* below). Number literals are decimal, with an optional fractional part and exponent, as in `42`, `3.14`, `15e-3` and `2E6`; a literal denotes the exact value it writes, and an exponent implies nothing about floating point. Literals are never negative: unary `-` negates any expression, as in `-1`, `f(-x)` or `-p.age`. It binds tighter than `*`, `/` and `%`, so `-2 * x` is `(-2) * x`, and looser than calls and projection, so `-p.age` is `-(p.age)`. Examples in this draft use whole numbers.
 - label singleton types such as `'true`, `'lt`, `'missing`
 - unions of labels, such as `'lt | 'eq | 'gt`
 - list types `[T]`
@@ -241,6 +241,17 @@ Bool: 'true | 'false,
 OrderingResult: 'lt | 'eq | 'gt,
 Ordering(A): { compare: (A, A) -> OrderingResult },
 ```
+
+**Arithmetic.** A `Num` is a fraction `n/d` in normal form: `d >= 0`, and `n` and `d` have no common factor other than 1. When `d > 0` it is a rational number. When `d == 0` it is one of two extra values, which division by zero produces: **infinity**, `1/0`, and **bottom**, `0/0`, the analogue of a floating-point NaN. Bottom is a value, unrelated to the bottom type `Never`. The operators `+`, `-`, `*` and `/` are total. Each applies the usual fraction rule and then normalises:
+
+- `a/b + c/d = (ad + bc)/(bd)`, `a/b * c/d = (ac)/(bd)`, `-(a/b) = (-a)/b`, `x - y = x + (-y)`, and `(a/b) / (c/d) = (ad)/(bc)`.
+- Normalising `n/0` gives `1/0` when `n != 0`, and `0/0` when `n == 0`.
+
+So `x / 0` is infinity for every `x` except 0 and bottom, and `0 / 0` is bottom. Infinity has no sign: `-(1 / 0) == 1 / 0`. For finite `x`, `x + 1/0`, `(1/0) / x` and, when `x != 0`, `x * (1/0)` are infinity, and `x / (1/0)` is 0. `1/0 + 1/0`, `1/0 - 1/0`, `0 * (1/0)` and `(1/0) / (1/0)` are bottom, and any operation with a bottom operand gives bottom.
+
+Both extra values are ordinary normal forms, so `==` compares them like any other number: `1 / 0 == -7 / 0` and `0 / 0 == 0 / 0`. Unlike a floating-point NaN, bottom equals itself, and `==` stays reflexive (section 5). This structure is the wheel of rational numbers (Carlström, *Wheels: on division by zero*, 2004). `+` and `*` remain commutative and associative, with identities 0 and 1, but some field laws hold only for finite values: `x - x == 0`, `0 * x == 0` and distributivity fail when an operand is infinity or bottom.
+
+`%` is the **floored** remainder: `a % b = a - b * floor(a / b)`, where `floor(q)` is the greatest whole number not above `q`. For a finite `a` and a finite `b != 0`, the result has the sign of `b`, so for a positive `b` it lies in `[0, b)`, as in Python and Haskell's `mod`. It applies to fractions too: `7.5 % 2 == 1.5` and `-7 % 2 == 1`. Taking `floor` of infinity and bottom to be themselves, the same formula covers every other case: `a % b` is bottom whenever `b` is 0, or either operand is infinity or bottom. Floored division of whole numbers is then `(a - a % b) / b`.
 
 ### 4.2 Labels and label unions
 
@@ -302,7 +313,7 @@ Duetto has no tuples. Parentheses mean grouping and parameter lists only, and `(
 Tuples could be added cheaply as sugar for records with numeric fields, as in Standard ML, but their main appeal would be unifying them with argument lists, so that every function takes a single argument. The current design has no obstacle to that unification, but the deferred handler design does: it has second-class values, and a tuple holding one would make every argument second-class, so unifying tuples with argument lists would need per-field class (section D9). Adopting tuples now would make handlers harder to add later, for a small benefit. Named records serve better, and cost no more to write:
 
 ```duetto
-divmod = (a, b) -> { div: a / b, mod: a % b },
+intdivmod = (a, b) -> { div: (a - a % b) / b, mod: a % b },
 ```
 
 For generic code, the standard library picks field names once, as in `zip` returning `[{ left: A, right: B }]`.
@@ -315,7 +326,7 @@ This decision will be revisited if handlers are permanently dropped, or if a lig
 
 | Value kind | Equality rule |
 | --- | --- |
-| `Num`, `String`, labels | equal values |
+| `Num`, `String`, labels | equal values; for `Num`, infinity equals infinity and bottom equals bottom (section 4.1) |
 | Lists | same length and pairwise equal elements |
 | Records | same fields and pairwise equal field values |
 | Functions | same lambda literal and equal captured values (section 5.1) |
@@ -447,13 +458,12 @@ The entry point's name, the set of root capabilities, and their types are not ye
 
 ### 6.6 Partial primitives
 
-A primitive that cannot produce a result for some arguments needs a defined meaning, since there are no ambient aborts: failure must be returned as data (section 8). The cases known so far:
+A primitive that cannot produce a result for some arguments needs a defined meaning, since there are no ambient aborts: failure must be returned as data (section 8). Arithmetic is not among them: dividing by zero gives infinity or bottom, which are ordinary `Num` values (section 4.1). The cases known so far:
 
-- **Division and remainder by zero**, `a / 0` and `a % 0`.
 - **Access by position**, such as the first element of an empty list or a character past the end of a string. None of these exists yet: lists are consumed through `fold` and similar total primitives (section 4.5).
 - **Parsing**, as in `parse_num`, already returns a union (section 8).
 
-Division is an open question (section 13.1). Non-termination is not failure but divergence, and is discussed under termination (section 13.1).
+Non-termination is not failure but divergence, and is discussed under termination (section 13.1).
 
 ## 7. Spec language
 
@@ -950,7 +960,7 @@ spec settings are complete {
 },
 ```
 
-and give the result type `{ theme: String, size: Num }`, taken from the second spec, which the first is included in. Likewise `ensure divmod(7, 2).div == 3` and `ensure divmod(7, 2).mod == 1`, in one spec, give `{ div: Num, mod: Num }`, whether or not the spec names the result. In two separate specs they conflict, since neither spec's fields include the other's. This is the record counterpart of the label rule of section 12.3: a result contains exactly what one spec observes, so an implementation that returns a field no spec observes fails its check. The formal core states it in its sections 6.2 and 6.4.
+and give the result type `{ theme: String, size: Num }`, taken from the second spec, which the first is included in. Likewise `ensure intdivmod(7, 2).div == 3` and `ensure intdivmod(7, 2).mod == 1`, in one spec, give `{ div: Num, mod: Num }`, whether or not the spec names the result. In two separate specs they conflict, since neither spec's fields include the other's. This is the record counterpart of the label rule of section 12.3: a result contains exactly what one spec observes, so an implementation that returns a field no spec observes fails its check. The formal core states it in its sections 6.2 and 6.4.
 
 At a negative position, such as a parameter, open uses stay wildcards, and different exact shapes in separate specs conflict: `greet({ name: "Ada" })` in one spec and `greet({ name: "Ada", age: 3 })` in another are reported.
 
@@ -990,14 +1000,8 @@ Extracted signatures are printed in the same type syntax, including `?` for type
 - **Preconditions in law specs** (section 7.1). An implementation could escape a law by a precondition that rejects the summoned values the law is checked with. The options: (1) discard as in other specs, and report a law spec whose cases were all discarded, as for any spec; (2) also report every discard in a law spec, since a law should hold for every value of the interface's type; (3) treat a precondition that fails in a law spec as a failure of the law. Recommendation: (1) for now, since it is the general rule, with discard counts shown in the report so that a law checked mostly on rejected inputs is visible.
 - **Generating inputs that satisfy preconditions.** Discarding wastes generated cases when a precondition rejects most of them. A later step could use preconditions to guide `some` (section 7.4).
 - **Evaluation cost.** Re-running specs for each newly catalogued type can grow quickly. The depth limit may need a companion cap on instantiations per consumer spec, or sampling.
-- **Division by zero** (section 6.6). The options:
-  1. **Total arithmetic**: `a / 0 = 0` and `a % 0 = a`, as in Lean and Pony. `/` stays an ordinary operator, but a missing check silently gives a wrong number.
-  2. **Division returns a union**: `a / b : { ok: Num } | { div_by_zero: {} }`. Honest, consistent with section 8, but every arithmetic expression then needs a `case` or propagation.
-  3. **Both**: total `/` and `%`, plus functions `div` and `mod` in the standard library that return a union, for code that must not divide by zero silently.
-
-  Recommendation: option 3. It keeps arithmetic readable and makes the checked form one call away. `Num` is an exact rational (section 4.1), so overflow does not arise.
-- **Remainder on fractions.** `%` on numbers that are not whole needs a definition. The options: **floored**, `a % b = a - b * floor(a / b)`, whose result has the sign of `b`, as in Python and Haskell's `mod`; **truncated**, whose result has the sign of `a`, as in C and Java; or `%` **only on whole numbers**, which needs a whole-number check that the type system cannot express. Recommendation: floored, since it makes `a % b` lie in `[0, b)` for positive `b`, which is what modular code expects.
-- **Showing numbers.** A value such as `1 / 3` has no finite decimal expansion, so converting a `Num` to text needs a rule: a fraction such as `1/3`, a repeating decimal such as `0.(3)`, or rounding to a requested number of digits. This is a library question, not a language one.
+- **Infinity and bottom in `some(Num)`** (section 4.1). Whether `some(Num)` generates infinity and bottom. Generating them finds code that divides by zero unexpectedly, but a spec such as `ensure x - x == 0` then fails unless it rules them out. Where an ordering places them is a library question, not a language one: the standard library can offer several orderings on `Num` that put them first or last, or that fail on them once capabilities are formally introduced.
+- **Showing numbers.** A value such as `1 / 3` has no finite decimal expansion, so converting a `Num` to text needs a rule: a fraction such as `1/3`, a repeating decimal such as `0.(3)`, or rounding to a requested number of digits. Infinity and bottom need a spelling too. This is a library question, not a language one.
 - **Laws on structurally equal interfaces** (section 10.6). Laws follow structure, so `Max` and `Sum`, both `{ combine: (A, A) -> A }`, share laws, and a law that holds only for `Max`, such as idempotence, fails on every `Sum`. The options:
   1. **Structural discipline**: interfaces with different laws must differ in structure, for example `{ max: ... }` and `{ sum: ... }`. No new construct, but generic code over every such interface needs a common field name, which this rules out.
   2. **Nominal interfaces**: a form that makes an alias a distinct type, so laws attach to its name. Precise, but it is a new construct, and it brings nominal typing into a structural language.
