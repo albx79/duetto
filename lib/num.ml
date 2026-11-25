@@ -34,11 +34,11 @@ let equal l r = (Z.equal l.num r.num) && (Z.equal l.den r.den)
 
 let make num den = normalise { num; den }
 
+let neg { num = a; den = b } = Z.(make (-a) b)
+let inv { num = a; den = b } = make b a
 let add { num = a; den = b } { num = c; den = d } = Z.(make (a*d + b*c) (b*d))
-let sub { num = a; den = b } { num = c; den = d } = failwith "TODO"
-let div { num = a; den = b } { num = c; den = d } = failwith "TODO"
-let mul { num = a; den = b } { num = c; den = d } = failwith "TODO"
-let neg { num = a; den = b } = failwith "TODO"
-let inv { num = a; den = b } = failwith "TODO"
+let sub lhs rhs = add lhs (neg rhs)
+let mul { num = a; den = b } { num = c; den = d } = Z.(make (a*c) (b*d))
+let div lhs rhs = mul lhs (inv rhs)
 
 let to_string value = Printf.sprintf "%s/%s" (Z.to_string value.num) (Z.to_string value.den)
