@@ -41,4 +41,14 @@ let sub lhs rhs = add lhs (neg rhs)
 let mul { num = a; den = b } { num = c; den = d } = Z.(make (a*c) (b*d))
 let div lhs rhs = mul lhs (inv rhs)
 
+let floor { num; den } = 
+  if Z.equal den Z.zero 
+  then { num; den }
+  else (make (Z.fdiv num den) Z.one)
+
+let rem a b = sub a (mul b (floor (div a b)))
+
 let to_string value = Printf.sprintf "%s/%s" (Z.to_string value.num) (Z.to_string value.den)
+
+let of_string_opt s = failwith "TODO"
+let of_string s = of_string_opt s

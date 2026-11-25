@@ -9,6 +9,16 @@ let check name actual expected =
     Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name expected actual
   end
 
+let check_opt name actual expected = 
+  match (actual, expected) with 
+  | (Some a, Some e) -> (check name a e)
+  | (None, None) -> ()
+  | (a, e) -> begin
+  incr failures;
+  Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name (Option.to_string expected) (Option.to_string actual)
+  end
+  
+
 let () =
   let q = N.of_ints in
   check "already normal" (q 1 2) "1/2";
@@ -60,8 +70,23 @@ let () =
   check "div 1/2 1/2" (N.div (q 1 2) (q 1 2)) "1/1";
   check "div negative den" (N.div (q 1 2) (q (-1) 3)) "-3/2";
   check "div by zero is infty" (N.div (q 1 1) (q 0 1)) "1/0";
+  check "div by infty is zero" (N.div (q 7 1) (q 1 0)) "0/1";
   check "div zero by zero is bottom" (N.div (q 0 1) (q 0 1)) "0/0";
 
   check "preserve precision" (N.mul (q 1 3) (q 3 1)) "1/1";
+
+  check "floor -7/2" (N.floor (q (-7) 2)) "-4/1";
+  check "floor infty" (N.floor (q 1 0)) "1/0";
+  check "floor bottom" (N.floor (q 0 0)) "0/0";
+
+  check "7.5 % 2" (N.rem (q 15 2) (q 2 1)) "3/2";
+  check "-7 % 2" (N.rem (q (-7) 1) (q 2 1)) "1/1";
+  check "7 % -2" (N.rem (q 7 1) (q (-2) 1)) "-1/1";
+  check "7 % 0" (N.rem (q 7 1) (q 0 1)) "0/0";
+  check "0 % 0" (N.rem (q 0 1) (q 0 1)) "0/0";
+  check "infty % 2" (N.rem (q 1 0) (q 2 1)) "0/0";
+  check "7 % infty" (N.rem (q 7 1) (q 1 0)) "0/0";
+
+  (* check_opt "parse 42" (N.of_string_opt "42") ; *)
     
   if !failures > 0 then exit 1 else print_endline "num tests passed"

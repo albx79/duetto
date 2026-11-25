@@ -14,3 +14,8 @@ val div : t -> t -> t
 val inv : t -> t
 val to_string : t -> string
 val of_ints : int -> int -> t
+val of_string : string -> t
+val of_string_opt : string -> t option
+
+val floor : t -> t
+val rem : t -> t -> t
