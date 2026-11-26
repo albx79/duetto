@@ -2,12 +2,15 @@ module N = Duetto.Num
 
 let failures = ref 0
 
-let check name actual expected =
-  let actual = N.to_fraction_string actual in
+let check_equal name actual expected = 
   if actual <> expected then begin
     incr failures;
     Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name expected actual
   end
+
+let check name actual expected =
+  let actual = N.to_fraction_string actual in
+  check_equal name actual expected
 
 let check_opt name actual expected = 
   match (actual, expected) with 
@@ -109,5 +112,10 @@ let () =
   check_opt "fail parse missing integer part" (N.of_string_opt ".5") None;
   check_opt "fail parse negative numbers" (N.of_string_opt "-5") None;
   check_opt "fail parse exp with _" (N.of_string_opt "5e1_2") None;
+
+  check_equal "print infty" (N.to_string (q 1 0)) "∞";
+  check_equal "print bottom" (N.to_string (q 0 0)) "⊥";
+  check_equal "print period" (N.to_string (q 1 3)) "0.3̅";
+  check_equal "print negative periodic number" (N.to_string (q (-1) 3)) "-0.3̅";
     
   if !failures > 0 then exit 1 else print_endline "num tests passed"
