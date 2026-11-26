@@ -908,6 +908,86 @@
       "last_modified": "2026-09-30T11:58:46Z",
       "resolved": "github:NixOS/nixpkgs/c9fe7d12cd78d1adcd12dd15e24432dde5b155a0?lastModified=1790769526&narHash=sha256-5AIVFLRcx8YAwbFTVPTs7YhwJH7JyHfAQsvXmpovcXI%3D"
     },
+    "gmp@latest": {
+      "last_modified": "2026-10-02T22:55:44Z",
+      "resolved": "github:NixOS/nixpkgs/55ba7f49ef2962b42cbd126522b7df5f95037679#gmp",
+      "source": "devbox-search",
+      "version": "6.3.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/8hkmzp44hd4zgdza7zv700ify7hp4k6d-gmp-with-cxx-6.3.0",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/0qif5vafxx6cn7gl5yklgpgncc7rs1id-gmp-with-cxx-6.3.0-dev"
+            },
+            {
+              "name": "info",
+              "path": "/nix/store/igqpsrxlh5108fnfg76i0c2li7h8wfqd-gmp-with-cxx-6.3.0-info"
+            }
+          ],
+          "store_path": "/nix/store/8hkmzp44hd4zgdza7zv700ify7hp4k6d-gmp-with-cxx-6.3.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/669gpb9grdy5a9908vsdsfb4cbll4qdj-gmp-with-cxx-6.3.0",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/1mdxyfqn0fwgysblcpbl47jdba7vdj1b-gmp-with-cxx-6.3.0-dev"
+            },
+            {
+              "name": "info",
+              "path": "/nix/store/vz8zpadff8xp2rjvg2nmpi7lvb1vnami-gmp-with-cxx-6.3.0-info"
+            }
+          ],
+          "store_path": "/nix/store/669gpb9grdy5a9908vsdsfb4cbll4qdj-gmp-with-cxx-6.3.0"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/n01cdwg5sapmhkxpji7ahdq0sp69cs3c-gmp-with-cxx-6.3.0",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/bn3silcr8ccf3hr9j3f95shidf6nk59c-gmp-with-cxx-6.3.0-dev"
+            },
+            {
+              "name": "info",
+              "path": "/nix/store/7p6imhlr0yry9jfvzmazfax797qgw985-gmp-with-cxx-6.3.0-info"
+            }
+          ],
+          "store_path": "/nix/store/n01cdwg5sapmhkxpji7ahdq0sp69cs3c-gmp-with-cxx-6.3.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/z7j20jl3wdi418wbajrbximy6j472y2j-gmp-with-cxx-6.3.0",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/bwidwan0rmszlq3lgpfzp4i0rcb04k6c-gmp-with-cxx-6.3.0-dev"
+            },
+            {
+              "name": "info",
+              "path": "/nix/store/kqprdwxc309qcf8lhrbvppyh9j2chw6y-gmp-with-cxx-6.3.0-info"
+            }
+          ],
+          "store_path": "/nix/store/z7j20jl3wdi418wbajrbximy6j472y2j-gmp-with-cxx-6.3.0"
+        }
+      }
+    },
     "gnugrep@latest": {
       "last_modified": "2026-10-02T22:55:44Z",
       "resolved": "github:NixOS/nixpkgs/55ba7f49ef2962b42cbd126522b7df5f95037679#gnugrep",
