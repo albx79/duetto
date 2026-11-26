@@ -1,20 +1,20 @@
-type t = { 
-  num : Z.t; 
+type t = {
+  num : Z.t;
   den : Z.t;
 }
 
 let infty = { num = Z.one; den = Z.zero; }
 let bottom = { num = Z.zero; den = Z.zero; }
 
-let normalise value = 
+let normalise value =
   if Z.equal value.den Z.zero
-  then 
-    if Z.equal value.num Z.zero 
+  then
+    if Z.equal value.num Z.zero
     then bottom
     else infty
   else
-    let the_gcd = Z.gcd value.num value.den in 
-    let sign = (Z.sign value.num) * (Z.sign value.den) in 
+    let the_gcd = Z.gcd value.num value.den in
+    let sign = (Z.sign value.num) * (Z.sign value.den) in
     {
       num = (
         let tmp_num = Z.(abs (value.num / the_gcd))
@@ -23,11 +23,11 @@ let normalise value =
       den = Z.(abs (value.den / the_gcd));
     }
 
-let of_ints n d = 
+let of_ints n d =
   let value = {
     num = Z.of_int n;
     den = Z.of_int d;
-  } 
+  }
   in normalise value
 
 let equal l r = (Z.equal l.num r.num) && (Z.equal l.den r.den)
@@ -41,8 +41,8 @@ let sub lhs rhs = add lhs (neg rhs)
 let mul { num = a; den = b } { num = c; den = d } = Z.(make (a*c) (b*d))
 let div lhs rhs = mul lhs (inv rhs)
 
-let floor { num; den } = 
-  if Z.equal den Z.zero 
+let floor { num; den } =
+  if Z.equal den Z.zero
   then { num; den }
   else (make (Z.fdiv num den) Z.one)
 
@@ -52,6 +52,21 @@ let to_fraction_string value = Printf.sprintf "%s/%s" (Z.to_string value.num) (Z
 
 module IntMap = Map.Make(Z)
 let ten = Z.of_int 10
+
+let overline s =
+  let buffer = Buffer.create (String.length s) in
+  let rec loop i =
+    if i < String.length s then begin
+      let decoded = String.get_utf_8_uchar s i in
+      if not (Uchar.utf_decode_is_valid decoded) then
+        invalid_arg "overline: invalid UTF-8";
+      Buffer.add_utf_8_uchar buffer (Uchar.utf_decode_uchar decoded);
+      Buffer.add_string buffer "\u{0305}";
+      loop (i + Uchar.utf_decode_length decoded)
+    end
+  in
+  loop 0;
+  Buffer.contents buffer
 
 let to_string { num; den } =
   if den = Z.zero then
@@ -75,7 +90,7 @@ let to_string { num; den } =
               let frac = Buffer.contents buf in
               let non_rep = String.sub frac 0 start_idx in
               let rep = String.sub frac start_idx (String.length frac - start_idx) in
-              Printf.sprintf "%s%s.%s(%s)" sign int_part non_rep rep
+              Printf.sprintf "%s%s.%s%s" sign int_part non_rep (overline rep)
           | None ->
               let seen' = IntMap.add r idx seen in
               let r10 = Z.(r * ten) in
@@ -87,27 +102,27 @@ let to_string { num; den } =
 let ( let* ) = Option.bind
 
 let is_valid_digits s = String.length s > 0 && s |> String.for_all (fun (d) -> d >= '0' && d <= '9')
-let is_valid_exp exp = 
+let is_valid_exp exp =
   let end_idx = String.length exp in
   ((String.starts_with ~prefix:"-" exp || String.starts_with ~prefix:"+" exp) && is_valid_digits (String.sub exp 1 (end_idx-1)))
   || is_valid_digits exp
 
-let number_string_and_exp (s: string) : (string * int) option = 
-  match String.split_on_char 'e' s with 
+let number_string_and_exp (s: string) : (string * int) option =
+  match String.split_on_char 'e' s with
   | [number] -> Some (number, 0)
   | [number; exp] -> if is_valid_exp exp
     then (int_of_string_opt exp) |> Option.map (fun e -> (number, e))
     else None
 | _ -> None
 
-let whole_string_and_len_of_dec s = match s |> String.split_on_char '.' with 
+let whole_string_and_len_of_dec s = match s |> String.split_on_char '.' with
   | [whole] -> if is_valid_digits whole then Some (whole, 0) else None
-  | [whole; decimals] -> if is_valid_digits whole && is_valid_digits decimals 
+  | [whole; decimals] -> if is_valid_digits whole && is_valid_digits decimals
     then Some (whole ^ decimals, String.length decimals)
-    else None 
+    else None
   | _ -> None
 
-let of_string_opt s = 
+let of_string_opt s =
   let input = String.lowercase_ascii s in
   let* (number_str, exp) = number_string_and_exp input in
   let* (whole, dec_digits) = whole_string_and_len_of_dec number_str in
@@ -115,8 +130,8 @@ let of_string_opt s =
   let (k_pos, k_neg) = if exp >= 0 then (exp, 0) else (0, -exp)
   in let num = Z.( whle * (pow ten k_pos) )
   and den = Z.pow ten (k_neg + dec_digits)
-  in Some (normalise { num; den })  
+  in Some (normalise { num; den })
 
-let of_string s = match of_string_opt s with 
+let of_string s = match of_string_opt s with
   | Some n -> n
   | None -> failwith ("Invalid number " ^ s)
