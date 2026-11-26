@@ -50,35 +50,40 @@ let rem a b = sub a (mul b (floor (div a b)))
 
 let to_string value = Printf.sprintf "%s/%s" (Z.to_string value.num) (Z.to_string value.den)
 
+let ( let* ) = Option.bind
+
+let is_valid_digits s = String.length s > 0 && s |> String.for_all (fun (d) -> d >= '0' && d <= '9')
+let is_valid_exp exp = 
+  let end_idx = String.length exp in
+  ((String.starts_with ~prefix:"-" exp || String.starts_with ~prefix:"+" exp) && is_valid_digits (String.sub exp 1 (end_idx-1)))
+  || is_valid_digits exp
+
 let number_string_and_exp (s: string) : (string * int) option = 
   match String.split_on_char 'e' s with 
   | [number] -> Some (number, 0)
-  | [number; exp] -> (int_of_string_opt exp) |> Option.map (fun e -> (number, e))
+  | [number; exp] -> if is_valid_exp exp
+    then (int_of_string_opt exp) |> Option.map (fun e -> (number, e))
+    else None
 | _ -> None
 
-
-let whole_string_and_len_of_dec s = if s |> String.ends_with ~suffix:"." 
-  then None 
-  else match s |> String.split_on_char '.' with 
-  | [whole] -> Some (whole, 0)
-  | [whole; decimals] -> Some (whole ^ decimals, String.length decimals)
+let whole_string_and_len_of_dec s = match s |> String.split_on_char '.' with 
+  | [whole] -> if is_valid_digits whole then Some (whole, 0) else None
+  | [whole; decimals] -> if is_valid_digits whole && is_valid_digits decimals 
+    then Some (whole ^ decimals, String.length decimals)
+    else None 
   | _ -> None
 
 let ten = Z.of_int 10
 
 let of_string_opt s = 
-  match number_string_and_exp s with
-  | Some (number_str, exp) -> (
-    match whole_string_and_len_of_dec number_str with 
-    | Some (whole, dec_digits) -> int_of_string_opt whole |> Option.map (fun (whle) ->
-      let (k_pos, k_neg) = if exp >= 0 then (exp, 0) else (0, -exp)
-      in let num = Z.( (of_int whle) * (pow ten k_pos) )
-      and den = Z.pow ten (k_neg + dec_digits)
-      in normalise { num; den }
-    )
-    | None -> None
-  )
-  | None -> None
+  let input = String.lowercase_ascii s in
+  let* (number_str, exp) = number_string_and_exp input in
+  let* (whole, dec_digits) = whole_string_and_len_of_dec number_str in
+  let whle = Z.of_string whole in
+  let (k_pos, k_neg) = if exp >= 0 then (exp, 0) else (0, -exp)
+  in let num = Z.( whle * (pow ten k_pos) )
+  and den = Z.pow ten (k_neg + dec_digits)
+  in Some (normalise { num; den })  
 
 let of_string s = match of_string_opt s with 
   | Some n -> n

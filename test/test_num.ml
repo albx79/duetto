@@ -46,7 +46,7 @@ let () =
   check "add negative" (N.add (q 1 2) (q (-1) 2)) "0/1";
   check "add infty" (N.add (q 1 2) (q 1 0)) "1/0";
   check "add bottom" (N.add (q 1 2) (q 0 0)) "0/0";
-  check "add bottom rhs" (N.add (q 0 0) (q 1 2)) "0/0";
+  check "add bottom lhs" (N.add (q 0 0) (q 1 2)) "0/0";
 
   check "neg 1/2" (N.neg (q 1 2)) "-1/2";
   check "neg -1/2" (N.neg (q (-1) 2)) "1/2";
@@ -64,7 +64,7 @@ let () =
   check "mul infty" (N.mul (q 1 2) (q 1 0)) "1/0";
   check "mul zero infty" (N.mul (q 0 1) (q 1 0)) "0/0";
   check "mul bottom" (N.mul (q 1 2) (q 0 0)) "0/0";
-  check "mul bottom rhs" (N.mul (q 0 0) (q 1 2)) "0/0";
+  check "mul bottom lhs" (N.mul (q 0 0) (q 1 2)) "0/0";
 
   check "inv 1/2" (N.inv (q 1 2)) "2/1";
   check "inv zero" (N.inv (q 0 1)) "1/0";
@@ -94,13 +94,20 @@ let () =
   check_opt "parse integer" (N.of_string_opt "42") (Some "42/1");
   check_opt "parse decimal" (N.of_string_opt "7.5") (Some "15/2");
   check_opt "parse integer with exponent" (N.of_string_opt "7e1") (Some "70/1");
+  check_opt "uppercase exponent" (N.of_string_opt "2E+4") (Some "20000/1");
   check_opt "parse integer with negative exponent" (N.of_string_opt "7e-2") (Some "7/100");
   check_opt "parse decimal with exponent" (N.of_string_opt "7.03e1") (Some "703/10");
   check_opt "parse decimal with negative exponent" (N.of_string_opt "7.03e-3") (Some "703/100000");
-  check_opt "parse number too large" (N.of_string_opt "99999999999999999999") None;
+  check_opt "parse large number" (N.of_string_opt "99999999999999999999") (Some "99999999999999999999/1");
+  check_opt "parse long pi" (N.of_string_opt "3.14159265358979323846") (Some "157079632679489661923/50000000000000000000");
   check_opt "parse empty str" (N.of_string_opt "") None;
-  check_opt "parse trailing dot" (N.of_string_opt "1.") None;
-  check_opt "parse no digits" (N.of_string_opt "abc") None;
-  check_opt "parse empty exp" (N.of_string_opt "1e") None;
+  check_opt "fail parse trailing dot" (N.of_string_opt "1.") None;
+  check_opt "fail parse no digits" (N.of_string_opt "abc") None;
+  check_opt "fail parse empty exp" (N.of_string_opt "1e") None;
+  check_opt "fail parse underscore in literal" (N.of_string_opt "1_000") None;
+  check_opt "fail parse hex numbers" (N.of_string_opt "0x10") None;
+  check_opt "fail parse missing integer part" (N.of_string_opt ".5") None;
+  check_opt "fail parse negative numbers" (N.of_string_opt "-5") None;
+  check_opt "fail parse exp with _" (N.of_string_opt "5e1_2") None;
     
   if !failures > 0 then exit 1 else print_endline "num tests passed"
