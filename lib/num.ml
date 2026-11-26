@@ -48,7 +48,9 @@ let floor { num; den } =
 
 let rem a b = sub a (mul b (floor (div a b)))
 
-let to_string value = Printf.sprintf "%s/%s" (Z.to_string value.num) (Z.to_string value.den)
+let to_fraction_string value = Printf.sprintf "%s/%s" (Z.to_string value.num) (Z.to_string value.den)
+
+let to_string value = failwith "TODO"
 
 let ( let* ) = Option.bind
 

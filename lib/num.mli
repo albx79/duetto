@@ -13,6 +13,7 @@ val div : t -> t -> t
 (** the unary inverse as defined by Carlström (2004) *)
 val inv : t -> t
 
+val to_fraction_string : t -> string
 val to_string : t -> string
 val of_ints : int -> int -> t
 val of_string : string -> t

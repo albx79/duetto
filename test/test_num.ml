@@ -3,7 +3,7 @@ module N = Duetto.Num
 let failures = ref 0
 
 let check name actual expected =
-  let actual = N.to_string actual in
+  let actual = N.to_fraction_string actual in
   if actual <> expected then begin
     incr failures;
     Printf.printf "FAIL %s\n  expected: %s\n  actual:   %s\n" name expected actual
@@ -19,7 +19,7 @@ let check_opt name actual expected =
     "FAIL %s\n  expected: %s\n  actual:   %s\n" 
     name 
     (Option.value expected ~default:"<None>")
-    (actual |> Option.map N.to_string |> Option.value ~default:"<None>") 
+    (actual |> Option.map N.to_fraction_string |> Option.value ~default:"<None>") 
   end
   
 
