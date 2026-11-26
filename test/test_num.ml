@@ -91,6 +91,16 @@ let () =
   check "infty % 2" (N.rem (q 1 0) (q 2 1)) "0/0";
   check "7 % infty" (N.rem (q 7 1) (q 1 0)) "0/0";
 
-  check_opt "parse 42" (N.of_string_opt "42") (Some "42/1");
+  check_opt "parse integer" (N.of_string_opt "42") (Some "42/1");
+  check_opt "parse decimal" (N.of_string_opt "7.5") (Some "15/2");
+  check_opt "parse integer with exponent" (N.of_string_opt "7e1") (Some "70/1");
+  check_opt "parse integer with negative exponent" (N.of_string_opt "7e-2") (Some "7/100");
+  check_opt "parse decimal with exponent" (N.of_string_opt "7.03e1") (Some "703/10");
+  check_opt "parse decimal with negative exponent" (N.of_string_opt "7.03e-3") (Some "703/100000");
+  check_opt "parse number too large" (N.of_string_opt "99999999999999999999") None;
+  check_opt "parse empty str" (N.of_string_opt "") None;
+  check_opt "parse trailing dot" (N.of_string_opt "1.") None;
+  check_opt "parse no digits" (N.of_string_opt "abc") None;
+  check_opt "parse empty exp" (N.of_string_opt "1e") None;
     
   if !failures > 0 then exit 1 else print_endline "num tests passed"
