@@ -2,6 +2,54 @@
 
 Nov 9, 2026 · @Alb
 
+## Reading guide
+
+This guide explains, without type theory, what the rest of the document does and what its symbols mean. It adds no rules: where it simplifies, the numbered sections are authoritative.
+
+**What the document is for.** Production code in Duetto has no type annotations. Instead, the public fields of a file get their types, called **signatures**, from the specs that use them. The design draft says what should happen; this document gives the exact rules for a small part of the language, precise enough to implement and test.
+
+**The process, in four steps** (section 7.4):
+
+1. **Read every spec** and record how it uses each field: what it passes in, and what it does with the result. Each occurrence of a field gives a **usage type** (section 5).
+2. **Choose a signature for each field.** One usage must cover all the others; it becomes the signature. If none does, the specs disagree, and the disagreement is reported (section 6).
+3. **Re-check every spec** against the signatures, to catch specs that are fine one use at a time but wrong as a whole (section 7.4).
+4. **Check each field's implementation** against its signature (section 7).
+
+**Key ideas.**
+
+- **Type variable**: a placeholder for a type. There are three kinds:
+  - **flexible** (`α`, `β`): "not known yet". The checker fills it in as it learns more, like a blank in a crossword.
+  - **rigid** (`â`): "any type, chosen by someone else". It comes from `?A` in a spec, which promises that the spec works for every `A`, so the checker may not fill it in.
+  - **generalization** (`X`, `R`): a placeholder in a finished signature, such as `X` in `identity : (?X) -> X`. Each use of the field picks its own `X`.
+- **Scheme** or **signature** (`σ`): a type with generalization variables, such as `(?X) -> X`. Each use of a field copies its scheme, with fresh flexible variables in place of `X`. This is called **instantiation**.
+- **Unification** (`~`): making two types equal by filling in flexible variables. `[α] ~ [Num]` fills `α` with `Num`; `Num ~ String` fails, which is a type error.
+- **Constraint**: a fact collected while reading code and solved later, such as "these two types are equal" or "this label must be handled".
+- **Environment** (`Γ`): the table of names in scope and their types. `Γ₀` holds the built-ins, such as `+`, `++` and `length`, whose types the language fixes because no spec can provide them (section 2.2). `Γspec` is the table inside a spec, and `Γsig` is the table once every field has a signature.
+- **Row** (`ρ`, `R`): "the other fields" of a record. `{ name: String | ρ }` has `name` and possibly more, written `{ name: String, .. }` in Duetto; `{ name: String | ∅ }` has exactly `name`.
+- **Lacks set** (`Λ`): the fields a row is known not to contain, so that no record ends up with the same field twice.
+- **Label set** (`L`, `ℓ`): a set of labels, such as `'lt | 'eq | 'gt`. A label-set variable `ℓ` keeps two bounds: the labels that may arrive there (`L⁻`) and the labels that are handled there (`L⁺`). A label that may arrive but is not handled is an error. This is how `case` exhaustiveness works, and how "returns a label no spec observes" is detected.
+- **Polarity**: whether a position produces values (**positive**: results, and what is inside them) or consumes them (**negative**: function parameters). Labels follow it: a function may return fewer labels than its callers handle, and accept more labels than its callers pass.
+- **`Never`**: the type with no values. An empty list has type `[Never]`, which fits any list type.
+- **Anti-unification** (`lgg`): the opposite of unification. Given several types, it finds what they have in common and where they differ. It is used only to explain disagreements between specs.
+
+**Notation.** `A ⟹ B` reads "if A, then B". `Γ ⊢ e : τ ⊣ C` reads "in the environment `Γ`, the expression `e` has type `τ`, provided the constraints `C` can be solved". Rules have names in brackets, such as `[App]` for function application.
+
+**Map of the sections.**
+
+| Section | What it answers |
+| --- | --- |
+| 1 | What is in the subset, and what is left out |
+| 2 | The types and expressions the rules talk about |
+| 3 | How each expression gets a type, and how labels and records are compared |
+| 4 | How locals and structs get types |
+| 5 | How a spec is read, and what it says about each field |
+| 6 | How the uses of a field become one signature |
+| 7 | How implementations are checked against signatures |
+| 8 | Worked examples: what must be accepted (A) and rejected (R) |
+| 9 | What is simplified, what is decided, and what comes next |
+
+On a first read, start with sections 7.4 and 8: they show what the rules are for. The other sections are the precise version.
+
 ## 1. Purpose and scope
 
 This document specifies the formal core of Duetto: the typing rules, spec elaboration, and extraction of public signatures from specs. It covers steps 1 and 2 of the design draft's section 13.3, typing and generalization and row unification, which every later feature depends on.
@@ -259,7 +307,7 @@ Locals, and the fields of **nested** record literals, are typed in dependency or
 1. Build the dependency graph of the struct's locals and of the fields of its nested record literals: `x` depends on `y` if `y` occurs in `x`'s right-hand side.
 2. Compute its strongly connected components, and type them in topological order.
 3. Within a component, each name `x` gets a fresh `αx`; the right-hand sides are typed with those assumptions, and `Γ ⊢ ex : τx` adds `αx ~ τx`.
-4. After solving the component, **lambda locals are generalized** over the type and row variables that are not free in `Γ`. Computed locals stay monomorphic, and label-set variables are never generalized (section 3.2).
+4. After solving the component, **every local is generalized** over the type and row variables that are not free in `Γ`, whether its right-hand side is a lambda or a computed value. Values are immutable and there are no mutable references, so this is sound without ML's value restriction (section 9.2). Label-set variables are never generalized (section 3.2).
 5. **Fields of nested record literals are never generalized**, even when their right-hand side is a lambda: a record type has no `∀` (section 2.1), so a polymorphic field could not appear in the type of the record that contains it. Within the record, such a field is used at one type (case R19). Polymorphic fields of records, and of imported modules, wait for rank-2 polymorphism (design draft, sections 3.1 and 13.4).
 
 The components also determine function identity: a closure's identity includes the external captures of every component it can reach (design draft, section 5.1).
@@ -451,11 +499,10 @@ A field `f: e` is checked, not inferred:
 [Check]   σf = ∀X1...Xm, (R1 lacks Λ1)...(Rk lacks Λk). τf
           Γsig ⊢ e : τ ⊣ C
           C, τ ~ fresh⁻(τf[Xi := x̂i, Rj := r̂j])  solvable   (x̂i, r̂j fresh rigid;  Λ(r̂j) = Λj)
-          no x̂i or r̂j escapes into a variable free in Γsig
           ⟹  f: e  is well-typed
 ```
 
-Each field is checked in **its own constraint system** for type and row variables, after the locals have been inferred. Label-set variables of locals are the exception: they are shared by all field checks, as section 3.2 states. The **escape check** matters because a monomorphic computed local has flexible variables free in `Γsig`: if checking `f` unified one of them with `f`'s rigid `x̂`, that rigid variable would leak into every other use of the local.
+Each field is checked in **its own constraint system** for type and row variables, after the locals have been inferred. This needs no extra machinery. Every local is generalized over its type and row variables (section 4.2), so once the locals are inferred, `Γsig` has no free type or row variables, and every use of a local in a field's body instantiates it afresh. A field check therefore cannot bind a variable that another field sees, and no rigid `x̂i` or `r̂j` can escape it. Label-set variables of locals are the exception: they are never generalized, so they are shared by all field checks, as section 3.2 states.
 
 The generalization variables become rigid, so the implementation must work uniformly for every instance: it cannot use an `X` as an `Num`. Label sets and `Never` in `σf` are freshened with flipped polarity (section 3.2):
 
@@ -558,7 +605,6 @@ Notes:
 ### 9.1 Simplifications in the core
 
 - **Specs may not mention locals.** The design draft lets specs test locals without fixing their signatures. That creates a cycle: locals are inferred using field signatures, field signatures come from specs, and specs would use locals. With the re-check of section 7.4, a likely resolution is to let specs mention locals during elaboration as wildcards, and to type those uses only in the re-check, once locals are inferred.
-- **Computed locals are monomorphic.** Only lambda bindings are generalized. Since the language is pure, generalizing computed bindings would also be sound; it is left out for simplicity.
 - **Label-set variables are not generalized** (section 3.2), so a local helper's label sets are shared by all its uses, across all field checks.
 - **Fields of nested records are monomorphic** (section 4.2), since record types have no `∀`.
 - **Only the file's fields are public.** Nested modules, whose fields would also need signatures, come with the module system. The design draft's section 13.1 discusses how imported modules are typed.
@@ -568,6 +614,7 @@ Notes:
 
 - **One spec supplies the signature (decided).** Label sets, positive record fields, and in the struct-union step union members, are joined only over the usages of one spec; other specs must be included (sections 6 and 6.4, cases R26 to R28). An earlier rule joined label sets and fields across all specs, as a deliberate exception to "a signature is what one spec wrote". It was dropped for a single rule: record shapes could not be joined across specs without widening parameters, and the cost of the single rule, one spec that observes every outcome, is small, for example `ensure [same(1, 1), same(1, 2)] == ['true, 'false]`.
 - **Result fields must be observed (decided).** A record at a positive position is joined over one spec's usages and closed to the fields they observe, with an exact use fixing the field set (section 6.2, cases A13 to A15, R22, R23 and R27). This follows the label rule below: a public result contains only what one spec observes. It replaces an earlier rule that closed each usage's row separately, which made a spec that projects some fields conflict with one that compares the whole result. It is needed because no other spec form can fix the exact type of a record result whose fields are functions.
+- **Every local is generalized (decided).** An earlier rule generalized only lambda locals and kept computed locals monomorphic. A monomorphic local has type variables that every field sees, so each field check needed its own constraint system, and an escape check to stop a field's rigid variables from leaking into the local. Generalizing computed locals too is sound, since values are immutable, and it removes both mechanisms (section 7.2). A computed local can now be used at several types: `none = []` serves as both `[Num]` and `[String]`, and with `r = { id: x -> x }`, both `r.id(1)` and `r.id("s")` are accepted. Within the record itself, `id` is still used at one type (case R19). Label-set variables are still never generalized, so case R18 is unchanged.
 - **Result labels must be observed (decided).** By sections 6.3 and 7.2, an implementation may return only labels that some spec observes or handles (cases R6 and R17). This is kept, because it is what makes every label of a public interface exercised by some spec. Its cost falls on every predicate implemented with `==`: one spec must observe both `'true` and `'false` (cases A12 and R28). A spec suite that tests only the positive case of a predicate is incomplete, so the cost is accepted. The same holds for fields that return interface values, such as an ordering: every label its functions return must be observed, by one spec (cases A13 and R21). No adjustment of the rule is needed for them, only guidance (design draft, sections 10.4 and 12.3). One alternative was considered and not adopted: counting the observations of law specs, which check orderings for every label. Law specs do not call the field, though, so they produce no usage of it.
 - **Label sets shared between field checks (open).** Section 3.2 shares a local's label-set variables across all field checks, so one field's use of a local can widen a label set that another field sees (case R18). That is sound but not modular, and the resulting errors appear far from their cause. The options:
   1. **Keep sharing**, the current rule. Simple and sound; diagnostics must name both fields.
@@ -576,6 +623,12 @@ Notes:
 
   Recommendation: option 3, after a soundness argument for copying bounds. It removes R18's action at a distance, and it subsumes option 2. Until then, option 1 holds.
 - **A change from the earlier extraction rule.** The design draft's earlier anti-unification rule accepted R11, since each variable of the generalization `(X, Y) -> X` came from some `?` variable. The core rejects it under the "most general usage" rule. This is a deliberate change of meaning, not just added precision, and the design draft has been updated to match.
+- **Lacks sets that printing cannot show (open).** A signature keeps the lacks sets of its usage's rigid rows (section 6.4), and a rigid row's lacks set is the union of the fields next to it anywhere in its spec (section 5.2). So with `p = some({ name: String, ..?R })`, `q = some({ id: Num, ..R })` and `ensure f(q) == ...`, the signature of `f` is `∀(R lacks id, name). ({ id: Num | R }) -> ...`. It prints as `({ id: Num, .. }) -> ...`, because the surface syntax can only express lacking the fields next to a row. A caller reading it would expect `f({ id: 1, name: "a" })` to be accepted, but it is rejected. The options:
+  1. **Keep the lacks sets**, and find a way to print them, or accept that printed signatures are incomplete in this case.
+  2. **Drop the extra fields** in `gen(U)`: a generalization row lacks only the fields next to it in the signature. This is probably sound: the implementation is checked against a rigid row that cannot supply or reveal `name`, so it cannot behave differently when `name` is present. That argument is not yet written down, and the signature would then accept more than the spec tested.
+  3. **Reject the spec**: a `?R` used next to different fields is reported during elaboration. This is simple, but it rules out specs that are otherwise reasonable.
+
+  The case only arises when a spec reuses `?R` next to different fields, so it is rare. Until it is decided, the reference checker keeps the lacks sets (option 1) and prints only the fields next to each row.
 
 ### 9.3 Next extensions
 

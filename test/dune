@@ -19,4 +19,8 @@
   (name test_num)
   (modules test_num)
   (libraries duetto))
-  
+
+(test
+ (name test_scheme)
+ (modules test_scheme)
+ (libraries duetto))
