@@ -58,11 +58,18 @@ let rec eval (expr : A.expr) =
         |> List.map (fun (name, typ_dsc) -> (name, summon_value typ_dsc)))
     in summon_value typ
   | A.Record fields -> Tree (List.filter_map eval_field fields)
-  | A.Block _ -> failwith "Blocks are not supported"
+  | A.Block (_, expr) -> eval expr
   | A.List entries ->
     Tree (entries |> List.mapi (fun idx item -> (string_of_int idx, eval item)))
-  | A.Concat (_, _) ->
-      failwith "Runtime evaluator does not support ++ yet"
+  | A.Concat (lhs, rhs) -> (
+    match (eval lhs, eval rhs) with
+    | (Tree l, Tree r) -> 
+      let l_len = List.length l in 
+      let incr_field_name f = ((int_of_string f) + l_len) |> string_of_int in
+      let mapped_r = r |> List.map (fun (number, value) -> (incr_field_name number), value ) in
+      Tree (List.append l mapped_r)
+    | _ -> failwith "Concatenation (++) can only be applied to lists"
+    )
   | A.Eq (lhs, rhs) -> Label (if atom_eq (eval lhs) (eval rhs) then "true" else "false")
   | A.Label l -> Label l
   | A.Double _ -> failwith "Doubles are not supported yet"
