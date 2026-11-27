@@ -99,6 +99,9 @@ let to_string { num; den } =
       in
       loop rem 0 IntMap.empty
 
+let pp fmt value = Format.pp_print_string fmt (to_string value)
+let show = to_string
+
 let ( let* ) = Option.bind
 
 let is_valid_digits s = String.length s > 0 && s |> String.for_all (fun (d) -> d >= '0' && d <= '9')

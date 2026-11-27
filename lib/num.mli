@@ -15,6 +15,11 @@ val inv : t -> t
 
 val to_fraction_string : t -> string
 val to_string : t -> string
+
+(** Printers in the shape expected by [[@@deriving show]] *)
+val pp : Format.formatter -> t -> unit
+val show : t -> string
+
 val of_ints : int -> int -> t
 val of_string : string -> t
 val of_string_opt : string -> t option

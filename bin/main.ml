@@ -1,22 +1,23 @@
 module A = Duetto.Ast.Located
 module StrMap = Map.Make(String)
+module Num = Duetto.Num
 
 let eval_num literal =
-  match int_of_string_opt literal with
+  match Num.of_string_opt literal with
   | Some n -> n
   | None ->
       failwith (Printf.sprintf
-        "Runtime numeric error: expected an integer literal, got %S" literal)
+        "Runtime numeric error: invalid number `%S`" literal)
 
 
 type parsed_expr =
-  | Atom of int
+  | Atom of Num.t
   | Label of string
   | Tree of (string * parsed_expr) list
 [@@deriving show]
 
 let rec atom_eq a1 a2 = match (a1, a2) with
-  | (Atom n, Atom m) -> n = m
+  | (Atom n, Atom m) -> Num.equal n m
   | (Label l, Label m) -> l = m
   | (Tree fields1, Tree fields2) ->
     let map1 = fields1 |> List.to_seq |> StrMap.of_seq in
@@ -42,7 +43,7 @@ let rec eval (expr : A.expr) =
   | A.Every _ -> failwith "every is not supported yet"
   | A.Some_val typ ->
     let rec summon_value (typ_desc : A.type_expr) = match typ_desc.node with
-      | A.Type_ref ([], "Num") -> Atom (Random.int 100)
+      | A.Type_ref ([], "Num") -> Atom (Num.of_ints (Random.int 100) (Random.int 100))
       | A.Type_ref _ -> failwith "Only numbers can be summoned"
       | A.Type_apply _ -> failwith "Type application is not supported yet"
       | A.Type_list _ -> failwith "Lists cannot be summoned yet"
@@ -92,33 +93,34 @@ let rec eval (expr : A.expr) =
       | None -> failwith "case: no branch matches the value")
   | A.Neg e ->
       (match eval e with
-      | Atom n -> Atom (- n)
+      | Atom n -> Atom (Num.neg n)
       | _ -> failwith "can only negate atoms")
   | A.Add (a, b) ->
       (match (eval a, eval b) with
-      | (Atom a, Atom b) -> Atom (a + b)
+      | (Atom a, Atom b) -> Atom (Num.add a b)
       | _ -> failwith "can only add atoms")
   | A.Sub (a, b) ->
       (match (eval a, eval b) with
-      | (Atom a, Atom b) -> Atom (a - b)
+      | (Atom a, Atom b) -> Atom (Num.sub a b)
       | _ -> failwith "can only subtract atoms")
   | A.Mul (a, b) ->
       (match (eval a, eval b) with
-      | (Atom a, Atom b) -> Atom (a * b)
+      | (Atom a, Atom b) -> Atom (Num.mul a b)
       | _ -> failwith "can only multiply atoms")
   | A.Div (a, b) ->
       (match (eval a, eval b) with
-      | (Atom a, Atom b) -> Atom (a / b)
+      | (Atom a, Atom b) -> Atom (Num.div a b)
       | _ -> failwith "can only divide atoms")
   | A.Mod (a, b) ->
       (match (eval a, eval b) with
-      | (Atom a, Atom b) -> Atom (a mod b)
+      | (Atom a, Atom b) -> Atom (Num.rem a b)
       | _ -> failwith "can only mod atoms")
 
 and eval_field (entry : A.struct_entry) =
   match entry.node with
   | A.Field (s, e) -> Some (s, eval e)
-  | A.Local (s, e) -> Some (s, eval e)
+  (* Locals aren't needed because we don't resolve names yet *)
+  | A.Local (s, e) -> None
   (* Types exist only at compile time (spec, section 3.8). *)
   | A.Type_field _ | A.Type_local _ -> None
   | A.Ensure e ->
